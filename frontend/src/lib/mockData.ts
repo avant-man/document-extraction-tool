@@ -4,8 +4,8 @@ export const MOCK_REPORT: ExtractedReport = {
   summary: {
     watershedName: 'Leaf River Watershed',
     planYear: 2023,
-    totalGoals: 10,
-    totalBMPs: 24,
+    totalGoals: 4,
+    totalBMPs: 3,
     completionRate: 78,
     totalEstimatedCost: 2500000,
   },
