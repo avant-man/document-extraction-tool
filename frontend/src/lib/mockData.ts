@@ -1,7 +1,14 @@
 import type { ExtractedReport } from '../types/extraction';
 
 export const MOCK_REPORT: ExtractedReport = {
-  summary: { totalGoals: 10, totalBMPs: 24, completionRate: 78 },
+  summary: {
+    watershedName: 'Leaf River Watershed',
+    planYear: 2023,
+    totalGoals: 10,
+    totalBMPs: 24,
+    completionRate: 78,
+    totalEstimatedCost: 2500000,
+  },
   goals: [
     {
       id: 'g1',
@@ -10,9 +17,21 @@ export const MOCK_REPORT: ExtractedReport = {
       category: 'water quality',
       status: 'in_progress',
       benchmarks: [
-        { description: 'Install riparian buffers', target: '500 acres', achieved: '380 acres', unit: 'acres', status: 'in_progress' },
-        { description: 'Reduce erosion by 30%', target: '30%', achieved: '22%', unit: '%', status: 'not_met' }
-      ]
+        {
+          description: 'Install riparian buffers',
+          target: '500 acres',
+          achieved: '380 acres',
+          unit: 'acres',
+          status: 'in_progress',
+        },
+        {
+          description: 'Reduce erosion by 30%',
+          target: '30%',
+          achieved: '22%',
+          unit: '%',
+          status: 'not_met',
+        },
+      ],
     },
     {
       id: 'g2',
@@ -21,24 +40,126 @@ export const MOCK_REPORT: ExtractedReport = {
       category: 'monitoring',
       status: 'completed',
       benchmarks: [
-        { description: 'Monitoring stations installed', target: '5', achieved: '5', unit: 'stations', status: 'met' }
-      ]
-    }
+        {
+          description: 'Monitoring stations installed',
+          target: '5',
+          achieved: '5',
+          unit: 'stations',
+          status: 'met',
+        },
+      ],
+    },
+    {
+      id: 'g3',
+      title: 'Reduce Nutrient Runoff',
+      description: 'Reduce nitrogen loading by 25%',
+      category: 'water quality',
+      status: 'in_progress',
+      benchmarks: [
+        {
+          description: 'Reduce nitrogen by 25%',
+          target: '25%',
+          achieved: '18%',
+          unit: '%',
+          status: 'in_progress',
+        },
+      ],
+    },
+    {
+      id: 'g4',
+      title: 'Enhance Riparian Habitat',
+      description: 'Restore native vegetation along 15 miles of stream',
+      category: 'habitat',
+      status: 'not_started',
+      benchmarks: [
+        {
+          description: 'Miles of stream restored',
+          target: '15 miles',
+          achieved: '0 miles',
+          unit: 'miles',
+          status: 'not_met',
+        },
+      ],
+    },
   ],
   bmps: [
-    { id: 'b1', name: 'Riparian Buffer Strips', category: 'erosion control', description: 'Vegetated strips along waterways', targetAcres: 500, achievedAcres: 380, status: 'in_progress' },
-    { id: 'b2', name: 'Cover Crops', category: 'agriculture', description: 'Winter cover crop implementation', targetAcres: 1200, achievedAcres: 1200, status: 'completed' }
+    {
+      id: 'b1',
+      name: 'Riparian Buffer Strips',
+      category: 'erosion control',
+      description: 'Vegetated strips along waterways',
+      targetAcres: 500,
+      achievedAcres: 380,
+      status: 'in_progress',
+    },
+    {
+      id: 'b2',
+      name: 'Cover Crops',
+      category: 'agriculture',
+      description: 'Winter cover crop implementation',
+      targetAcres: 1200,
+      achievedAcres: 1200,
+      status: 'completed',
+    },
+    {
+      id: 'b3',
+      name: 'Constructed Wetlands',
+      category: 'water quality',
+      description: 'Created wetlands for filtering',
+      targetAcres: 150,
+      achievedAcres: 45,
+      status: 'in_progress',
+    },
   ],
   implementation: [
-    { id: 'i1', description: 'Install riparian buffers on Smith Farm', bmpType: 'Riparian Buffer', location: 'Leake County', targetQuantity: 50, achievedQuantity: 38, unit: 'acres', year: 2023 }
+    {
+      id: 'i1',
+      description: 'Install riparian buffers on Smith Farm',
+      bmpType: 'Riparian Buffer',
+      location: 'Leake County',
+      targetQuantity: 50,
+      achievedQuantity: 38,
+      unit: 'acres',
+      year: 2023,
+    },
   ],
   monitoring: [
-    { id: 'm1', name: 'Leaf River Station 1', description: 'Monthly water quality sampling', location: 'Leake County', frequency: 'monthly', targetValue: 10, currentValue: 8.5, unit: 'mg/L TSS', trend: 'improving' }
+    {
+      id: 'm1',
+      name: 'Leaf River Station 1',
+      description: 'Monthly water quality sampling',
+      location: 'Leake County',
+      frequency: 'monthly',
+      targetValue: 10,
+      currentValue: 8.5,
+      unit: 'mg/L TSS',
+      trend: 'improving',
+    },
   ],
   outreach: [
-    { id: 'o1', description: 'Farmer workshop on cover crops', targetAudience: 'Local farmers', participationCount: 45, completionDate: '2023-09', status: 'completed' }
+    {
+      id: 'o1',
+      description: 'Farmer workshop on cover crops',
+      targetAudience: 'Local farmers',
+      participationCount: 45,
+      completionDate: '2023-09',
+      status: 'completed',
+    },
   ],
   geographicAreas: [
-    { id: 'ga1', name: 'Leaf River Watershed', county: 'Leake County', watershed: 'Leaf River', acres: 125000, description: 'Primary watershed area' }
-  ]
+    {
+      id: 'ga1',
+      name: 'Leaf River Watershed',
+      county: 'Leake County',
+      watershed: 'Leaf River',
+      acres: 125000,
+    },
+    {
+      id: 'ga2',
+      name: 'Upper Tributary',
+      county: 'Scott County',
+      watershed: 'Leaf River',
+      acres: 45000,
+    },
+  ],
 };
