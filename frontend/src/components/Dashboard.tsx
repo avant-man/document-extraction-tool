@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import type { ExtractedReport } from '../types/extraction';
 import { SummaryTab } from './tabs/SummaryTab';
+import { GoalsTab } from './tabs/GoalsTab';
+import { BMPsTab } from './tabs/BMPsTab';
+import { ImplementationTab } from './tabs/ImplementationTab';
 
 const TABS = ['Summary', 'Goals', 'BMPs', 'Implementation', 'Monitoring', 'Outreach', 'Charts'] as const;
 type Tab = typeof TABS[number];
@@ -36,9 +39,9 @@ export function Dashboard({ report }: Props) {
       {/* Tab content */}
       <div className="p-6">
         {activeTab === 'Summary' && <SummaryTab report={report} />}
-        {activeTab === 'Goals' && null}
-        {activeTab === 'BMPs' && null}
-        {activeTab === 'Implementation' && null}
+        {activeTab === 'Goals' && <GoalsTab goals={report.goals} />}
+        {activeTab === 'BMPs' && <BMPsTab bmps={report.bmps} />}
+        {activeTab === 'Implementation' && <ImplementationTab activities={report.implementation} />}
         {activeTab === 'Monitoring' && null}
         {activeTab === 'Outreach' && null}
         {activeTab === 'Charts' && (
