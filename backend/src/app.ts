@@ -4,7 +4,7 @@ import extractRouter from './routes/extract';
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use('/api', extractRouter);
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

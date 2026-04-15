@@ -8,9 +8,12 @@ import { validate } from '../services/validator';
 const router = Router();
 
 router.post('/extract', async (req, res) => {
-  const { blobUrl, filename } = req.body;
+  const { blobUrl } = req.body;
   if (!blobUrl || typeof blobUrl !== 'string') {
     return res.status(400).json({ error: 'blobUrl required' });
+  }
+  if (!blobUrl.startsWith('https://')) {
+    return res.status(400).json({ error: 'blobUrl must be an https URL' });
   }
 
   let buffer: Buffer;

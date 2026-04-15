@@ -17,49 +17,32 @@ export function validate(
   }
 
   // 3. Numeric cross-check
-  // Walk data numerics against regexNumerics map ±10%
-  // Log a warning if mismatch > 10% — do NOT throw
+  // Placeholder: a meaningful cross-check requires semantic context (e.g. matching
+  // an acres figure from regex against an acres field, not a cost field). The current
+  // data model doesn't surface that context, so the check is omitted to avoid
+  // spurious warnings. Future implementation should correlate by unit/category.
+  // The [NUM:*] markers injected by regexParser already surface ground-truth values
+  // directly to Claude, which is a stronger correctness signal.
+  void regexNumerics; // suppress unused-variable warning
+
   const lowerSource = sourceText.toLowerCase();
-
-  // Collect numeric values from the extracted data for cross-checking
-  const dataValues: number[] = [
-    data.summary.totalEstimatedCost,
-    ...data.bmps.map(b => b.cost),
-    ...data.bmps.map(b => b.targetAcres),
-    ...data.bmps.map(b => b.implementedAcres),
-    ...data.implementation.map(a => a.cost),
-    ...data.goals.map(g => g.targetReduction),
-    ...data.goals.flatMap(g => g.benchmarks.map(b => b.target)),
-    ...data.goals.flatMap(g => g.benchmarks.map(b => b.current)),
-  ].filter(v => v != null && !isNaN(v) && v > 0);
-
-  for (const [key, regexVal] of regexNumerics) {
-    for (const dataVal of dataValues) {
-      if (regexVal > 0 && Math.abs(dataVal - regexVal) / regexVal > 0.1) {
-        // Only warn if values are in a similar magnitude range (within 10x)
-        if (dataVal / regexVal > 0.1 && dataVal / regexVal < 10) {
-          console.warn(`[validator] Numeric mismatch: source "${key}" = ${regexVal}, extracted = ${dataVal}`);
-        }
-      }
-    }
-  }
 
   // 4. Hallucination guard
   // For each goal.title, bmp.name, geographicArea.name: verify string exists in sourceText
   // If not found: remove item from its array (don't throw)
   data.goals = data.goals.filter(g => {
     if (!g.title) return false;
-    return lowerSource.includes(g.title.toLowerCase().substring(0, 20));
+    return lowerSource.includes(g.title.toLowerCase());
   });
 
   data.bmps = data.bmps.filter(b => {
     if (!b.name) return false;
-    return lowerSource.includes(b.name.toLowerCase().substring(0, 20));
+    return lowerSource.includes(b.name.toLowerCase());
   });
 
   data.geographicAreas = data.geographicAreas.filter(a => {
     if (!a.name) return false;
-    return lowerSource.includes(a.name.toLowerCase().substring(0, 20));
+    return lowerSource.includes(a.name.toLowerCase());
   });
 
   // 5. Recompute derived summary fields

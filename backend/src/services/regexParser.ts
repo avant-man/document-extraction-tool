@@ -1,14 +1,25 @@
 import { AnnotatedDocument } from '../types/extraction';
 
-export function buildRegexNumerics(text: string): Map<string, number> {
+export interface RegexNumericResult {
+  map: Map<string, number>;
+  annotatedText: string;
+}
+
+export function buildRegexNumerics(text: string): RegexNumericResult {
   const map = new Map<string, number>();
+
+  // Collect all matches with their positions so we can inject markers
+  const matches: Array<{ index: number; raw: string; value: number }> = [];
 
   // acres: e.g. "450 acres", "1,200.5 acres"
   const acresRe = /[\d,]+\.?\d*\s*acres/gi;
   for (const match of text.matchAll(acresRe)) {
     const raw = match[0];
     const value = parseFloat(raw.replace(/[^\d.]/g, ''));
-    if (!isNaN(value)) map.set(raw, value);
+    if (!isNaN(value)) {
+      map.set(raw, value);
+      matches.push({ index: match.index!, raw, value });
+    }
   }
 
   // percentages: e.g. "75%"
@@ -16,7 +27,10 @@ export function buildRegexNumerics(text: string): Map<string, number> {
   for (const match of text.matchAll(pctRe)) {
     const raw = match[0];
     const value = parseFloat(raw);
-    if (!isNaN(value)) map.set(raw, value);
+    if (!isNaN(value)) {
+      map.set(raw, value);
+      matches.push({ index: match.index!, raw, value });
+    }
   }
 
   // dollar amounts: e.g. "$12,000"
@@ -24,7 +38,10 @@ export function buildRegexNumerics(text: string): Map<string, number> {
   for (const match of text.matchAll(dollarRe)) {
     const raw = match[0];
     const value = parseFloat(raw.replace(/[^\d.]/g, ''));
-    if (!isNaN(value)) map.set(raw, value);
+    if (!isNaN(value)) {
+      map.set(raw, value);
+      matches.push({ index: match.index!, raw, value });
+    }
   }
 
   // miles: e.g. "5 miles"
@@ -32,16 +49,31 @@ export function buildRegexNumerics(text: string): Map<string, number> {
   for (const match of text.matchAll(milesRe)) {
     const raw = match[0];
     const value = parseFloat(raw);
-    if (!isNaN(value)) map.set(raw, value);
+    if (!isNaN(value)) {
+      map.set(raw, value);
+      matches.push({ index: match.index!, raw, value });
+    }
   }
 
-  return map;
+  // Sort matches by position descending so replacements don't shift earlier indices
+  matches.sort((a, b) => b.index - a.index);
+
+  // Inject [NUM:raw] markers inline into the text
+  let annotatedText = text;
+  for (const { index, raw } of matches) {
+    annotatedText =
+      annotatedText.slice(0, index) +
+      `[NUM:${raw}]` +
+      annotatedText.slice(index + raw.length);
+  }
+
+  return { map, annotatedText };
 }
 
 export function annotateText(text: string): AnnotatedDocument {
-  const regexNumerics = buildRegexNumerics(text);
+  const { map: regexNumerics, annotatedText: numericAnnotated } = buildRegexNumerics(text);
 
-  const lines = text.split('\n');
+  const lines = numericAnnotated.split('\n');
   const annotated: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {

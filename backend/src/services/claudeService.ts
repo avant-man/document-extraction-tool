@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { ExtractedReport } from '../types/extraction';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -39,9 +38,6 @@ Rules:
 - Extract proper nouns exactly as they appear in the source text
 - If a field has no data, use an empty array [] or null
 - Return ONLY the JSON object, no explanation`;
-
-// ExtractedReport imported for type-safety of callers; used indirectly via the return type
-void (null as unknown as ExtractedReport);
 
 export async function extractWithClaude(annotatedText: string): Promise<string> {
   const response = await anthropic.messages.create({
