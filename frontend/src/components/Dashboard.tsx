@@ -15,10 +15,12 @@ export function Dashboard({ report }: Props) {
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       {/* Tab bar */}
-      <div className="flex border-b border-gray-200">
+      <div role="tablist" className="flex border-b border-gray-200">
         {TABS.map((tab) => (
           <button
             key={tab}
+            role="tab"
+            aria-selected={activeTab === tab}
             onClick={() => setActiveTab(tab)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab
