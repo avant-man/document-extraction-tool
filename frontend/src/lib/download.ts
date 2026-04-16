@@ -4,5 +4,5 @@ export function triggerDownload(blob: Blob, filename: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 100);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

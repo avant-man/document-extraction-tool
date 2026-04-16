@@ -27,8 +27,7 @@ export function exportPdf(report: ExtractedReport, filename: string) {
     if (y > 270) { doc.addPage(); y = 20; }
     doc.setFontSize(10).setTextColor(60, 60, 60);
     doc.setFont('helvetica', 'bold');
-    const labelLines = doc.splitTextToSize(label + ':', 52);
-    doc.text(labelLines[0], 14, y);
+    doc.text(label + ':', 14, y);
     doc.setFont('helvetica', 'normal');
     const lines = doc.splitTextToSize(value, pageWidth - 80);
     doc.text(lines, 70, y);
