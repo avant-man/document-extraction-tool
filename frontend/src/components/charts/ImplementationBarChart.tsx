@@ -23,6 +23,16 @@ function truncateName(name: string): string {
   return name.slice(0, DISPLAY_MAX - 3) + '...';
 }
 
+/** Space for y-axis labels; scales down in narrow containers so the bar track stays usable. */
+function marginLeftForWidth(containerWidth: number): number {
+  return Math.min(200, Math.max(120, Math.round(containerWidth * 0.35)));
+}
+
+/** Reserve right margin for `formatAcresProgress` text; ticks scale with inner width. */
+export function xAxisTickCount(innerWidth: number): number {
+  return Math.max(2, Math.min(6, Math.floor(innerWidth / 72)));
+}
+
 export default function ImplementationBarChart({ bmps, height }: ImplementationBarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -56,10 +66,12 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const margin = { top: 10, right: 12, bottom: 30, left: 200 };
-    const labelWidth = 108;
-    const innerWidth = Math.max(40, width - margin.left - margin.right - labelWidth);
+    const marginRight = 118;
+    const marginLeft = marginLeftForWidth(width);
+    const margin = { top: 10, right: marginRight, bottom: 34, left: marginLeft };
+    const innerWidth = Math.max(48, width - margin.left - margin.right);
     const innerHeight = height - margin.top - margin.bottom;
+    const tickCount = xAxisTickCount(innerWidth);
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -98,10 +110,10 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
       .data(chartData)
       .join('text')
       .attr('class', 'label-progress')
-      .attr('x', innerWidth + labelWidth - 4)
+      .attr('x', innerWidth + 6)
       .attr('y', d => (yScale(d.displayName) ?? 0) + yScale.bandwidth() / 2)
       .attr('dy', '0.35em')
-      .attr('text-anchor', 'end')
+      .attr('text-anchor', 'start')
       .style('font-size', '11px')
       .style('fill', '#374151')
       .text(d => formatAcresProgress(d.achieved, d.target));
@@ -116,7 +128,12 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
 
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d3.format('~s')(+d)));
+      .call(
+        d3
+          .axisBottom(xScale)
+          .ticks(tickCount)
+          .tickFormat(d => d3.format('~s')(+d))
+      );
 
     g.append('text')
       .attr('x', innerWidth / 2)
@@ -138,7 +155,7 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
 
   return (
     <div ref={containerRef} className="w-full">
-      <svg ref={svgRef} width={width} height={height} />
+      <svg ref={svgRef} className="overflow-visible max-w-full" width={width} height={height} />
       <div className="flex gap-4 justify-end mt-1 min-h-[1.75rem] items-center text-xs text-gray-600">
         <span className="flex items-center gap-1">
           <span
