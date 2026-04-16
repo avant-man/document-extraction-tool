@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { upload } from '@vercel/blob/client';
 import type { ExtractedReport } from '../types/extraction';
 
-type Stage = 'idle' | 'uploading' | 'extracting' | 'done' | 'error';
+export type Stage = 'idle' | 'uploading' | 'extracting' | 'done' | 'error';
 
 interface ExtractionState {
   stage: Stage;
-  progress: number;       // 0–100 for upload progress
+  progress: number;       // 0–100 (upload progress tracked via onUploadProgress)
   result: ExtractedReport | null;
   error: string | null;
 }
@@ -24,7 +24,10 @@ export function useExtraction() {
     try {
       const blob = await upload(file.name, file, {
         access: 'public',
-        handleUploadUrl: '/api/blob-upload'
+        handleUploadUrl: '/api/blob-upload',
+        onUploadProgress: ({ percentage }) => {
+          setState(s => ({ ...s, progress: Math.round(percentage) }));
+        },
       });
       blobUrl = blob.url;
     } catch (err: unknown) {

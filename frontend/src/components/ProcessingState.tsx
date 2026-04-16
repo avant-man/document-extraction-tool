@@ -1,5 +1,7 @@
+import type { Stage } from '../hooks/useExtraction';
+
 interface ProcessingStateProps {
-  stage: 'uploading' | 'extracting';
+  stage: Extract<Stage, 'uploading' | 'extracting'>;
   progress: number;
 }
 

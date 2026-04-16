@@ -14,7 +14,7 @@ export function DropZone({ onFile, disabled }: DropZoneProps) {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) onFile(file);
+    if (file?.type === 'application/pdf') onFile(file);
   };
 
   return (
