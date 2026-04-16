@@ -9,15 +9,22 @@ interface ExtractionState {
   progress: number;       // 0–100 (upload progress tracked via onUploadProgress)
   result: ExtractedReport | null;
   error: string | null;
+  filename: string | null;
 }
 
 export function useExtraction() {
   const [state, setState] = useState<ExtractionState>({
-    stage: 'idle', progress: 0, result: null, error: null
+    stage: 'idle', progress: 0, result: null, error: null, filename: null
   });
 
   async function extract(file: File) {
-    setState({ stage: 'uploading', progress: 0, result: null, error: null });
+    setState({
+      stage: 'uploading',
+      progress: 0,
+      result: null,
+      error: null,
+      filename: file.name
+    });
 
     // Step 1: Upload to Vercel Blob
     let blobUrl: string;
@@ -25,6 +32,7 @@ export function useExtraction() {
       const blob = await upload(file.name, file, {
         access: 'public',
         handleUploadUrl: '/api/blob-upload',
+
         onUploadProgress: ({ percentage }) => {
           setState(s => ({ ...s, progress: Math.round(percentage) }));
         },
@@ -50,7 +58,7 @@ export function useExtraction() {
         throw new Error(errBody.error ?? `HTTP ${response.status}`);
       }
       const result: ExtractedReport = await response.json() as ExtractedReport;
-      setState({ stage: 'done', progress: 100, result, error: null });
+      setState(s => ({ ...s, stage: 'done', progress: 100, result, error: null }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setState(s => ({ ...s, stage: 'error', error: 'Extraction failed: ' + message }));
@@ -58,7 +66,7 @@ export function useExtraction() {
   }
 
   function reset() {
-    setState({ stage: 'idle', progress: 0, result: null, error: null });
+    setState({ stage: 'idle', progress: 0, result: null, error: null, filename: null });
   }
 
   return { ...state, extract, reset };

@@ -5,42 +5,101 @@ import { triggerDownload } from './download';
 export function exportCsv(report: ExtractedReport, filename: string) {
   const sections: string[] = [];
 
-  // Goals section
-  sections.push('=== GOALS ===');
-  sections.push(Papa.unparse(report.goals.map(g => ({
-    id: g.id, title: g.title, category: g.category, status: g.status, description: g.description
-  }))));
+  sections.push('=== SUMMARY ===');
+  sections.push(
+    Papa.unparse([
+      {
+        watershedName: report.summary.watershedName,
+        planYear: report.summary.planYear,
+        totalGoals: report.summary.totalGoals,
+        totalBMPs: report.summary.totalBMPs,
+        completionRate: report.summary.completionRate,
+        completionRateBasis: report.summary.completionRateBasis,
+        implementationCompletionRate: report.summary.implementationCompletionRate ?? '',
+        reportedProgressPercent: report.summary.reportedProgressPercent ?? '',
+        reportedProgressSource: report.summary.reportedProgressSource ?? '',
+        totalEstimatedCost: report.summary.totalEstimatedCost,
+        geographicScope: report.summary.geographicScope,
+      },
+    ])
+  );
 
-  // BMPs section
+  sections.push('\n=== GOALS ===');
+  sections.push(
+    Papa.unparse(
+      report.goals.map(g => ({
+        id: g.id,
+        title: g.title,
+        description: g.description,
+        pollutants: g.pollutants?.join('; ') ?? '',
+        targetReduction: g.targetReduction,
+      }))
+    )
+  );
+
   sections.push('\n=== BMPs ===');
-  sections.push(Papa.unparse(report.bmps.map(b => ({
-    id: b.id, name: b.name, category: b.category, status: b.status,
-    targetAcres: b.targetAcres ?? '', achievedAcres: b.achievedAcres ?? ''
-  }))));
+  sections.push(
+    Papa.unparse(
+      report.bmps.map(b => ({
+        name: b.name,
+        category: b.category,
+        targetAcres: b.targetAcres ?? '',
+        implementedAcres: b.implementedAcres ?? '',
+        cost: b.cost ?? '',
+        priority: b.priority,
+      }))
+    )
+  );
 
-  // Implementation section
   sections.push('\n=== IMPLEMENTATION ===');
-  sections.push(Papa.unparse(report.implementation.map(i => ({
-    id: i.id, description: i.description, bmpType: i.bmpType,
-    location: i.location ?? '', targetQuantity: i.targetQuantity,
-    achievedQuantity: i.achievedQuantity, unit: i.unit, year: i.year ?? ''
-  }))));
+  sections.push(
+    Papa.unparse(
+      report.implementation.map(i => ({
+        activity: i.activity,
+        year: i.year,
+        responsible: i.responsible,
+        cost: i.cost ?? '',
+        status: i.status,
+      }))
+    )
+  );
 
-  // Monitoring section
   sections.push('\n=== MONITORING ===');
-  sections.push(Papa.unparse(report.monitoring.map(m => ({
-    id: m.id, name: m.name, location: m.location, frequency: m.frequency,
-    targetValue: m.targetValue ?? '', currentValue: m.currentValue ?? '',
-    unit: m.unit, trend: m.trend ?? ''
-  }))));
+  sections.push(
+    Papa.unparse(
+      report.monitoring.map(m => ({
+        parameter: m.parameter,
+        location: m.location,
+        frequency: m.frequency,
+        target: m.target,
+        unit: m.unit,
+      }))
+    )
+  );
 
-  // Outreach section
   sections.push('\n=== OUTREACH ===');
-  sections.push(Papa.unparse(report.outreach.map(o => ({
-    id: o.id, description: o.description, targetAudience: o.targetAudience,
-    participationCount: o.participationCount ?? '', completionDate: o.completionDate ?? '',
-    status: o.status
-  }))));
+  sections.push(
+    Papa.unparse(
+      report.outreach.map(o => ({
+        activity: o.activity,
+        targetAudience: o.targetAudience,
+        timeline: o.timeline,
+        responsible: o.responsible,
+      }))
+    )
+  );
+
+  sections.push('\n=== GEOGRAPHIC AREAS ===');
+  sections.push(
+    Papa.unparse(
+      report.geographicAreas.map(a => ({
+        name: a.name,
+        county: a.county,
+        watershed: a.watershed,
+        acres: a.acres ?? '',
+      }))
+    )
+  );
 
   const blob = new Blob([sections.join('\n')], { type: 'text/csv' });
   triggerDownload(blob, `extraction-${filename}.csv`);

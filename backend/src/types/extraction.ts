@@ -16,9 +16,9 @@ export interface Benchmark {
 export interface BMP {
   name: string;
   category: string;
-  targetAcres: number;
-  implementedAcres: number;
-  cost: number;
+  targetAcres: number | null;
+  implementedAcres: number | null;
+  cost: number | null;
   priority: 'high' | 'medium' | 'low';
 }
 
@@ -26,7 +26,7 @@ export interface ImplementationActivity {
   activity: string;
   year: number;
   responsible: string;
-  cost: number;
+  cost: number | null;
   status: 'planned' | 'in-progress' | 'complete';
 }
 
@@ -61,6 +61,13 @@ export interface ExtractedReport {
     totalGoals: number;
     totalBMPs: number;
     completionRate: number;
+    /** How completionRate was computed: goal benchmarks, or implementation activity status counts */
+    completionRateBasis: 'benchmarks' | 'implementation' | 'none';
+    /** Share of implementation activities with status complete (only when benchmarks and implementation both exist) */
+    implementationCompletionRate?: number;
+    /** Only if the document explicitly states overall project/BMP progress as a percent */
+    reportedProgressPercent?: number | null;
+    reportedProgressSource?: string | null;
     totalEstimatedCost: number;
     geographicScope: string;
   };

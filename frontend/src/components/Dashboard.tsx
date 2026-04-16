@@ -7,9 +7,10 @@ import { ImplementationTab } from './tabs/ImplementationTab';
 import { MonitoringTab } from './tabs/MonitoringTab';
 import { OutreachTab } from './tabs/OutreachTab';
 import { ChartsTab } from './tabs/ChartsTab';
+import { GeographicTab } from './tabs/GeographicTab';
 import { ExportPanel } from './ExportPanel';
 
-const TABS = ['Summary', 'Goals', 'BMPs', 'Implementation', 'Monitoring', 'Outreach', 'Charts'] as const;
+const TABS = ['Summary', 'Goals', 'BMPs', 'Implementation', 'Monitoring', 'Outreach', 'Geographic', 'Charts'] as const;
 type Tab = typeof TABS[number];
 
 interface Props {
@@ -49,6 +50,7 @@ export function Dashboard({ report, filename }: Props) {
         {activeTab === 'Implementation' && <ImplementationTab activities={report.implementation} />}
         {activeTab === 'Monitoring' && <MonitoringTab metrics={report.monitoring} />}
         {activeTab === 'Outreach' && <OutreachTab activities={report.outreach} />}
+        {activeTab === 'Geographic' && <GeographicTab areas={report.geographicAreas} />}
         {activeTab === 'Charts' && <ChartsTab report={report} />}
       </div>
       <ExportPanel report={report} filename={filename} />

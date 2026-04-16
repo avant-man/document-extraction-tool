@@ -4,7 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { useExtraction } from './hooks/useExtraction';
 
 export default function App() {
-  const { stage, progress, result, error, extract, reset } = useExtraction();
+  const { stage, progress, result, error, filename, extract, reset } = useExtraction();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -41,7 +41,7 @@ export default function App() {
 
         {stage === 'done' && result && (
           <div>
-            <Dashboard report={result} />
+            <Dashboard report={result} filename={filename ?? 'document.pdf'} />
             <button onClick={reset} className="mt-6 px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
               ← Upload another PDF
             </button>

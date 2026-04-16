@@ -22,10 +22,8 @@ router.post('/blob-upload', async (req, res, next) => {
       onBeforeGenerateToken: async (_pathname) => ({
         allowedContentTypes: ['application/pdf'],
         maximumSizeInBytes: 150 * 1024 * 1024,
+        addRandomSuffix: true,
       }),
-      onUploadCompleted: async () => {
-        // post-upload hooks (analytics, DB write) to be added in spec-05
-      },
     });
     res.json(jsonResponse);
   } catch (err) {

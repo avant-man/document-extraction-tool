@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -d .worktrees)",
+      "Bash(ls -d worktrees)",
+      "mcp__plugin_vercel_vercel__list_teams",
+      "Bash(vercel whoami *)",
+      "Read(//c/Users/admin/.local/share/com.vercel.cli/**)",
+      "Read(//c/Users/admin/.vercel/**)",
+      "mcp__plugin_vercel_vercel__deploy_to_vercel",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(node -e ' *)",
+      "Bash(npx ts-node -e ' *)",
+      "Skill(commit)",
+      "Bash(ls *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(git commit *)",
+      "Bash(node -e \"const p = require\\('path'\\); const f = require\\('fs'\\); let d = '/e/Share/projects/pdf-extract/backend/src'; while \\(true\\) { const c = p.join\\(d, '.env'\\); if \\(f.existsSync\\(c\\)\\) { console.log\\(c\\); break; } const up = p.dirname\\(d\\); if \\(up === d\\) { console.log\\('not found'\\); break; } d = up; }\")",
+      "Bash(node *)",
+      "Bash(find *)"
+    ]
+  }
+}

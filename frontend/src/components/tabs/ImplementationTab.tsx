@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import type { ImplementationActivity } from '../../types/extraction';
 
+function statusPill(status: ImplementationActivity['status']) {
+  const classes =
+    status === 'complete'
+      ? 'bg-green-100 text-green-800'
+      : status === 'in-progress'
+      ? 'bg-amber-100 text-amber-800'
+      : 'bg-gray-100 text-gray-700';
+  const label = status === 'in-progress' ? 'in progress' : status;
+  return <span className={`text-xs rounded px-2 py-0.5 ${classes}`}>{label}</span>;
+}
+
 interface Props {
   activities: ImplementationActivity[];
 }
@@ -9,7 +20,7 @@ export function ImplementationTab({ activities }: Props) {
   const [filter, setFilter] = useState('');
 
   const filtered = activities.filter(a =>
-    [a.description, a.bmpType, a.location ?? '']
+    [a.activity, a.responsible, String(a.year ?? '')]
       .join(' ')
       .toLowerCase()
       .includes(filter.toLowerCase())
@@ -27,32 +38,32 @@ export function ImplementationTab({ activities }: Props) {
       {filtered.length === 0 ? (
         <p className="text-center text-gray-400 py-8">No activities match your search</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-gray-500 border-b border-gray-200">
-              <th className="pb-2">Description</th>
-              <th className="pb-2">BMP Type</th>
-              <th className="pb-2">Location</th>
-              <th className="pb-2">Target</th>
-              <th className="pb-2">Achieved</th>
-              <th className="pb-2">Unit</th>
-              <th className="pb-2">Year</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(a => (
-              <tr key={a.id} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{a.description}</td>
-                <td className="py-2 pr-4">{a.bmpType}</td>
-                <td className="py-2 pr-4">{a.location ?? '—'}</td>
-                <td className="py-2 pr-4">{a.targetQuantity}</td>
-                <td className="py-2 pr-4">{a.achievedQuantity}</td>
-                <td className="py-2 pr-4">{a.unit}</td>
-                <td className="py-2 pr-4">{a.year ?? '—'}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[44rem]">
+            <thead>
+              <tr className="text-left text-gray-500 border-b border-gray-200">
+                <th className="pb-2 pr-3 min-w-0 max-w-[40%] break-words">Activity</th>
+                <th className="pb-2 pr-3 whitespace-nowrap">Year</th>
+                <th className="pb-2 pr-3 min-w-0 max-w-[28%] break-words">Responsible</th>
+                <th className="pb-2 pr-3 whitespace-nowrap">Cost</th>
+                <th className="pb-2 pr-3 whitespace-nowrap">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((a, i) => (
+                <tr key={`${a.activity}-${i}`} className="border-b border-gray-100 align-top">
+                  <td className="py-2 pr-3 min-w-0 break-words">{a.activity}</td>
+                  <td className="py-2 pr-3">{a.year ?? '—'}</td>
+                  <td className="py-2 pr-3 min-w-0 break-words">{a.responsible}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    {a.cost != null ? `$${a.cost.toLocaleString()}` : '—'}
+                  </td>
+                  <td className="py-2 pr-3">{statusPill(a.status)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

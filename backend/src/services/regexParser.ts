@@ -1,4 +1,5 @@
 import { AnnotatedDocument } from '../types/extraction';
+import { logger } from '../lib/logger';
 
 export interface RegexNumericResult {
   map: Map<string, number>;
@@ -33,8 +34,8 @@ export function buildRegexNumerics(text: string): RegexNumericResult {
     }
   }
 
-  // dollar amounts: e.g. "$12,000"
-  const dollarRe = /\$[\d,]+/g;
+  // dollar amounts: e.g. "$12,000" or "$7,037.01"
+  const dollarRe = /\$[\d,]+(?:\.\d+)?/g;
   for (const match of text.matchAll(dollarRe)) {
     const raw = match[0];
     const value = parseFloat(raw.replace(/[^\d.]/g, ''));
@@ -93,10 +94,17 @@ export function annotateText(text: string): AnnotatedDocument {
       if (nearPage) continue;
     }
 
-    // Inject section markers before matching lines
-    if (/\bGoal\s+\d+[:.]/i.test(line)) {
+    // Inject section markers before matching lines (MDEQ / WIP patterns)
+    if (
+      /\bGoal\s+\d+[:.)]/i.test(line) ||
+      /Management\s+Goals/i.test(line) ||
+      /\bWatershed\s+Goals/i.test(line) ||
+      /\bObjective\s+\d+[:.)]/i.test(line) ||
+      /^Objectives?\s*[:.]?\s*$/i.test(trimmed) ||
+      /\bLoad\s+Reduction/i.test(line)
+    ) {
       annotated.push('[SECTION:goal]');
-    } else if (/\bBMP[:\s]/i.test(line)) {
+    } else if (/\bBMP[:\s]/i.test(line) || /Best\s+Management\s+Practices/i.test(line)) {
       annotated.push('[SECTION:bmp]');
     } else if (/Implementation\s+Activities/i.test(line)) {
       annotated.push('[SECTION:implementation]');
@@ -116,5 +124,25 @@ export function annotateText(text: string): AnnotatedDocument {
     }
   }
 
-  return { text: annotated.join('\n'), regexNumerics };
+  // Rows that include acre numerics + BMP-related vocabulary help tie costs/acres to practices
+  const withBmpHints = annotated.flatMap(line => {
+    if (
+      /\[NUM:[^\]]*acres\]/i.test(line) &&
+      /(structural|vegetative|management|planting|fencing|protection|basin|diversions|nutrient|trough|nrcs|practice)/i.test(
+        line
+      )
+    ) {
+      return ['[BMP_ROW_WITH_ACRES]', line];
+    }
+    return [line];
+  });
+
+  const out = withBmpHints.join('\n');
+  logger.debug('regex.annotate', {
+    stage: 'regex',
+    regexNumericsSize: regexNumerics.size,
+    annotatedChars: out.length
+  });
+
+  return { text: out, regexNumerics };
 }

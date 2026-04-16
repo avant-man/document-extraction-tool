@@ -1,10 +1,26 @@
 import * as d3 from 'd3';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { formatAcresProgress } from '../../lib/chartFormat';
+import { chartColors, targetBarOpacity } from '../../lib/chartTheme';
 import type { BMP } from '../../types/extraction';
+
+const DISPLAY_MAX = 32;
+
+interface Row {
+  displayName: string;
+  fullName: string;
+  target: number;
+  achieved: number;
+}
 
 interface ImplementationBarChartProps {
   bmps: BMP[];
   height: number;
+}
+
+function truncateName(name: string): string {
+  if (name.length <= DISPLAY_MAX) return name;
+  return name.slice(0, DISPLAY_MAX - 3) + '...';
 }
 
 export default function ImplementationBarChart({ bmps, height }: ImplementationBarChartProps) {
@@ -19,18 +35,18 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
     return () => ro.disconnect();
   }, []);
 
-  // Prepare data: filter nulls, sort by gap desc, slice top 15, truncate names
-  const chartData = useMemo(() => {
+  const chartData = useMemo((): Row[] => {
     return bmps
       .filter(b => b.targetAcres !== null)
       .sort((a, b) =>
-        ((b.targetAcres! - (b.achievedAcres ?? 0)) - (a.targetAcres! - (a.achievedAcres ?? 0)))
+        (b.targetAcres! - (b.implementedAcres ?? 0)) - (a.targetAcres! - (a.implementedAcres ?? 0))
       )
       .slice(0, 15)
       .map(b => ({
-        name: b.name.length > 25 ? b.name.slice(0, 22) + '...' : b.name,
+        fullName: b.name,
+        displayName: truncateName(b.name),
         target: b.targetAcres!,
-        achieved: b.achievedAcres ?? 0,
+        achieved: b.implementedAcres ?? 0,
       }));
   }, [bmps]);
 
@@ -38,16 +54,17 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
     if (!svgRef.current || chartData.length === 0) return;
 
     const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove(); // clear first — prevents StrictMode doubles
+    svg.selectAll('*').remove();
 
-    const margin = { top: 10, right: 70, bottom: 30, left: 160 };
-    const innerWidth = width - margin.left - margin.right;
+    const margin = { top: 10, right: 12, bottom: 30, left: 200 };
+    const labelWidth = 108;
+    const innerWidth = Math.max(40, width - margin.left - margin.right - labelWidth);
     const innerHeight = height - margin.top - margin.bottom;
 
     const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
 
     const yScale = d3.scaleBand()
-      .domain(chartData.map(d => d.name))
+      .domain(chartData.map(d => d.displayName))
       .range([0, innerHeight])
       .padding(0.3);
 
@@ -56,52 +73,51 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
       .domain([0, maxTarget * 1.1])
       .range([0, innerWidth]);
 
-    // Target bars (teal, semi-transparent background)
     g.selectAll('.bar-target')
       .data(chartData)
       .join('rect')
       .attr('class', 'bar-target')
       .attr('x', 0)
-      .attr('y', d => yScale(d.name) ?? 0)
+      .attr('y', d => yScale(d.displayName) ?? 0)
       .attr('width', d => xScale(d.target))
       .attr('height', yScale.bandwidth())
-      .attr('fill', '#0d9488')
-      .attr('opacity', 0.3);
+      .attr('fill', chartColors.target)
+      .attr('opacity', targetBarOpacity);
 
-    // Achieved bars (green, solid, overlaid)
     g.selectAll('.bar-achieved')
       .data(chartData)
       .join('rect')
       .attr('class', 'bar-achieved')
       .attr('x', 0)
-      .attr('y', d => yScale(d.name) ?? 0)
+      .attr('y', d => yScale(d.displayName) ?? 0)
       .attr('width', d => xScale(d.achieved))
       .attr('height', yScale.bandwidth())
-      .attr('fill', '#16a34a');
+      .attr('fill', chartColors.achieved);
 
-    // Value labels at end of achieved bar
-    g.selectAll('.label-achieved')
+    g.selectAll('.label-progress')
       .data(chartData)
       .join('text')
-      .attr('class', 'label-achieved')
-      .attr('x', d => xScale(d.achieved) + 4)
-      .attr('y', d => (yScale(d.name) ?? 0) + yScale.bandwidth() / 2)
+      .attr('class', 'label-progress')
+      .attr('x', innerWidth + labelWidth - 4)
+      .attr('y', d => (yScale(d.displayName) ?? 0) + yScale.bandwidth() / 2)
       .attr('dy', '0.35em')
+      .attr('text-anchor', 'end')
       .style('font-size', '11px')
       .style('fill', '#374151')
-      .text(d => d.achieved.toLocaleString());
+      .text(d => formatAcresProgress(d.achieved, d.target));
 
-    // Y axis (BMP names)
-    g.append('g')
-      .call(d3.axisLeft(yScale).tickSize(0).tickPadding(8))
-      .select('.domain').remove();
+    const yAxis = g.append('g')
+      .call(d3.axisLeft(yScale).tickSize(0).tickPadding(8));
+    yAxis.select('.domain').remove();
+    yAxis.selectAll<SVGGElement, string>('.tick').each(function (d) {
+      const row = chartData.find(r => r.displayName === d);
+      d3.select(this).append('title').text(row?.fullName ?? d);
+    });
 
-    // X axis
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(d3.axisBottom(xScale).ticks(5).tickFormat(d => d3.format('~s')(+d)));
 
-    // X axis label
     g.append('text')
       .attr('x', innerWidth / 2)
       .attr('y', innerHeight + 28)
@@ -123,14 +139,16 @@ export default function ImplementationBarChart({ bmps, height }: ImplementationB
   return (
     <div ref={containerRef} className="w-full">
       <svg ref={svgRef} width={width} height={height} />
-      {/* Legend */}
-      <div className="flex gap-4 justify-end mt-1 text-xs text-gray-600">
+      <div className="flex gap-4 justify-end mt-1 min-h-[1.75rem] items-center text-xs text-gray-600">
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-sm opacity-30" style={{ backgroundColor: '#0d9488' }} />
+          <span
+            className="inline-block w-3 h-3 rounded-sm opacity-30"
+            style={{ backgroundColor: chartColors.target }}
+          />
           Target
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: '#16a34a' }} />
+          <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: chartColors.achieved }} />
           Achieved
         </span>
       </div>

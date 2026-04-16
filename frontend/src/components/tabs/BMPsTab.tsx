@@ -1,18 +1,14 @@
 import { useState } from 'react';
 import type { BMP } from '../../types/extraction';
 
-function bmpStatusPill(status: string) {
+function priorityPill(priority: BMP['priority']) {
   const classes =
-    status === 'completed'
-      ? 'bg-green-100 text-green-700'
-      : status === 'in_progress'
-      ? 'bg-yellow-100 text-yellow-700'
-      : 'bg-gray-100 text-gray-600';
-  return (
-    <span className={`text-xs rounded px-2 py-0.5 ${classes}`}>
-      {status.replace('_', ' ')}
-    </span>
-  );
+    priority === 'high'
+      ? 'bg-red-100 text-red-800'
+      : priority === 'medium'
+      ? 'bg-amber-100 text-amber-800'
+      : 'bg-gray-100 text-gray-700';
+  return <span className={`text-xs rounded px-2 py-0.5 ${classes}`}>{priority}</span>;
 }
 
 interface Props {
@@ -20,10 +16,10 @@ interface Props {
 }
 
 export function BMPsTab({ bmps }: Props) {
-  const [sortKey, setSortKey] = useState<'targetAcres' | 'achievedAcres' | null>(null);
+  const [sortKey, setSortKey] = useState<'targetAcres' | 'implementedAcres' | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  function handleSort(key: 'targetAcres' | 'achievedAcres') {
+  function handleSort(key: 'targetAcres' | 'implementedAcres') {
     if (sortKey === key) {
       setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     } else {
@@ -41,11 +37,11 @@ export function BMPsTab({ bmps }: Props) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full text-sm min-w-[40rem]">
         <thead>
           <tr className="text-left text-gray-500 border-b border-gray-200">
-            <th className="pb-2">Name</th>
-            <th className="pb-2">Category</th>
+            <th className="pb-2 pr-3 min-w-0 max-w-[28%] break-words">Name</th>
+            <th className="pb-2 pr-3 min-w-0 break-words">Category</th>
             <th
               className="pb-2 cursor-pointer select-none hover:text-blue-600"
               onClick={() => handleSort('targetAcres')}
@@ -54,22 +50,23 @@ export function BMPsTab({ bmps }: Props) {
             </th>
             <th
               className="pb-2 cursor-pointer select-none hover:text-blue-600"
-              onClick={() => handleSort('achievedAcres')}
+              onClick={() => handleSort('implementedAcres')}
             >
-              Achieved Acres {sortKey === 'achievedAcres' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
+              Implemented Acres {sortKey === 'implementedAcres' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
             </th>
-            <th className="pb-2">Status</th>
+            <th className="pb-2">Cost</th>
+            <th className="pb-2">Priority</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((bmp) => (
-            <tr key={bmp.id} className="border-b border-gray-100">
-              <td className="py-2 pr-4">{bmp.name}</td>
-              <td className="py-2 pr-4">{bmp.category}</td>
-              <td className="py-2 pr-4">{bmp.targetAcres ?? '—'}</td>
-              <td className="py-2 pr-4">
-                {bmp.achievedAcres !== undefined &&
-                bmp.targetAcres &&
+            <tr key={bmp.name} className="border-b border-gray-100 align-top">
+              <td className="py-2 pr-3 min-w-0 break-words">{bmp.name}</td>
+              <td className="py-2 pr-3 min-w-0 break-words">{bmp.category}</td>
+              <td className="py-2 pr-3 whitespace-nowrap">{bmp.targetAcres ?? '—'}</td>
+              <td className="py-2 pr-3 min-w-0">
+                {bmp.implementedAcres !== null &&
+                bmp.targetAcres !== null &&
                 bmp.targetAcres > 0 ? (
                   <div>
                     <div className="w-full bg-gray-200 rounded h-1.5 mb-1">
@@ -78,18 +75,21 @@ export function BMPsTab({ bmps }: Props) {
                         style={{
                           width: `${Math.min(
                             100,
-                            ((bmp.achievedAcres ?? 0) / bmp.targetAcres) * 100
+                            ((bmp.implementedAcres ?? 0) / bmp.targetAcres) * 100
                           )}%`,
                         }}
                       />
                     </div>
-                    <span>{bmp.achievedAcres}</span>
+                    <span>{bmp.implementedAcres}</span>
                   </div>
                 ) : (
-                  '—'
+                  bmp.implementedAcres ?? '—'
                 )}
               </td>
-              <td className="py-2 pr-4">{bmpStatusPill(bmp.status)}</td>
+              <td className="py-2 pr-3 whitespace-nowrap">
+                {bmp.cost != null ? `$${bmp.cost.toLocaleString()}` : '—'}
+              </td>
+              <td className="py-2 pr-3 whitespace-nowrap">{priorityPill(bmp.priority)}</td>
             </tr>
           ))}
         </tbody>
