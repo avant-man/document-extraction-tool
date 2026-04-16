@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../lib/logger';
 import { parseLlmJsonResponse } from '../lib/parseLlmJson';
+import { buildClaudeUserContentForBatch, type BatchHint } from '../lib/pageBatches';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -31,7 +32,7 @@ const EXTRACTION_SCHEMA = {
   geographicAreas: [{ name: "string", county: "string", watershed: "string", acres: "number" }]
 };
 
-const WATERSHED_SYSTEM_PROMPT = `You are a technical analyst specializing in government watershed management plans.
+export const WATERSHED_EXTRACTION_SYSTEM_PROMPT = `You are a technical analyst specializing in government watershed management plans.
 Extract structured data from annotated watershed plan text and return ONLY valid JSON matching this exact schema:
 
 ${JSON.stringify(EXTRACTION_SCHEMA, null, 2)}
@@ -46,7 +47,23 @@ Rules:
 - For reportedProgressPercent/reportedProgressSource: only fill when the plan explicitly states an overall percent complete, percent of BMPs installed, or percent of budget expended for the project. Omit both fields for plans that only list milestones, schedules, or budgets without a single progress percentage (common for Mississippi WIPs).
 - Return ONLY the JSON object, no explanation`;
 
-export async function extractWithClaude(annotatedText: string): Promise<string> {
+export type ClaudeExtractionLogContext = {
+  estimatedInputTokens?: number;
+  pageCount?: number;
+  ocrEngine?: string;
+  ocrAppliedToPages?: number[];
+  sparsePageIndices?: number[];
+  batchIndex?: number;
+  totalBatches?: number;
+  batchedExtraction?: boolean;
+};
+
+export async function extractWithClaude(
+  annotatedText: string,
+  logContext?: ClaudeExtractionLogContext,
+  batch?: BatchHint
+): Promise<string> {
+  const userContent = batch ? buildClaudeUserContentForBatch(annotatedText, batch) : annotatedText;
   const model = 'claude-sonnet-4-6';
   const t0 = Date.now();
   const response = await anthropic.messages.create({
@@ -55,11 +72,11 @@ export async function extractWithClaude(annotatedText: string): Promise<string> 
     system: [
       {
         type: 'text',
-        text: WATERSHED_SYSTEM_PROMPT,
+        text: WATERSHED_EXTRACTION_SYSTEM_PROMPT,
         cache_control: { type: 'ephemeral' }
       }
     ],
-    messages: [{ role: 'user', content: annotatedText }]
+    messages: [{ role: 'user', content: userContent }]
   });
 
   const durationMs = Date.now() - t0;
@@ -78,7 +95,9 @@ export async function extractWithClaude(annotatedText: string): Promise<string> 
     model,
     stopReason: response.stop_reason,
     ...usageLog,
-    annotatedInputChars: annotatedText.length
+    annotatedInputChars: annotatedText.length,
+    userMessageChars: userContent.length,
+    ...logContext
   });
 
   if (response.stop_reason === 'max_tokens') {

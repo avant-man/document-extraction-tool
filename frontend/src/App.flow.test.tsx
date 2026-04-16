@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import type { ExtractedReport } from './types/extraction';
+import type { ExtractionApiResponse } from './types/extraction';
 
 vi.mock('@vercel/blob/client', () => ({
   upload: vi.fn(() =>
@@ -10,7 +10,7 @@ vi.mock('@vercel/blob/client', () => ({
   ),
 }));
 
-const minimalReport: ExtractedReport = {
+const minimalReport: ExtractionApiResponse = {
   summary: {
     watershedName: 'Test',
     planYear: 2024,
@@ -27,6 +27,7 @@ const minimalReport: ExtractedReport = {
   monitoring: [],
   outreach: [],
   geographicAreas: [],
+  extractionWarnings: [],
 };
 
 function resolveFetchUrl(input: RequestInfo | URL): string {

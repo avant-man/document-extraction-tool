@@ -65,19 +65,43 @@ Connect the GitHub repository in the Vercel dashboard under **Settings → Git**
 | `NODE_ENV` | No | Runtime environment (defaults to `production` on Vercel) | Set to `development` locally |
 | `VITE_API_BASE_URL` | Local dev only | Frontend API base URL | `http://localhost:3001` locally; not set on Vercel (same-origin) |
 
+### 4a. Scan-only PDFs (OCR)
+
+Image-only or non-selectable PDFs need **server-side OCR**. Without it, native text is empty and extraction returns little or no structured data.
+
+| Variable | Example value | Purpose |
+|---|---|---|
+| `OCR_ENGINE` | `tesseract` | **`none` is the default in code** — OCR is skipped. Set to `tesseract` in Production and Preview (and local `.env.local`) for scan plans. |
+| `OCR_SPARSE_CHAR_THRESHOLD` | `80` | Page is an OCR candidate when native trimmed length is below this (or fails the alphanumeric ratio below). |
+| `OCR_SPARSE_MIN_ALNUM_RATIO` | `0.12` | Set `0` or empty to disable. Long junk native layers with ratio below this still count as sparse. |
+| `AUTO_OCR_NATIVE_TOTAL_CHARS_THRESHOLD` | `500` | When **total** native characters across the whole PDF is below this and `OCR_ENGINE=tesseract`, **all** pages are treated as OCR candidates (still capped by `OCR_MAX_PAGES`). |
+| `OCR_RENDER_SCALE` | `1.75` | Raster scale for pdf.js → PNG; max `4`. Increase slightly if OCR is unreadable. |
+| `OCR_MAX_PAGES` | `60` | Max sparse pages OCR’d per request; raise (e.g. `120`) only if function time and memory allow. |
+
+**Local:** after `vercel env pull .env.local`, append the OCR lines from the project root `.env.example` (uncomment `OCR_ENGINE=tesseract` and adjust as needed), then restart the backend dev server.
+
+**Vercel:** **Settings → Environment Variables** → add `OCR_ENGINE` = `tesseract` for Production and Preview, or run `vercel env add OCR_ENGINE` and paste `tesseract`. Redeploy after changes.
+
+**Diagnostics:** from the `backend/` folder, `npm run diagnose:pdf -- [optional/path/to.pdf]` logs native page lengths, sparse indices, and OCR application (set `OCR_ENGINE=tesseract` first). Default path is `docs/superpowers/specs/Bogue_Chitto_Creek_Watershed_Plan_2004.pdf` when no argument is passed.
+
 These variables are also documented in `.env.example` at the project root. **Never commit `.env.local` or any file containing real credentials.**
 
 ---
 
 ## 5. Vercel Configuration (`vercel.json`)
 
-The project root `vercel.json` contains three directives:
+The project root `vercel.json` configures rewrites, the frontend build, output directory, and API **function duration** (60s for OCR / large PDFs):
 
 ```json
 {
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/index" }],
   "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist"
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/index.ts": {
+      "maxDuration": 60
+    }
+  }
 }
 ```
 
@@ -100,22 +124,9 @@ Vercel detects any file under `api/` that exports a default value and wraps it i
 
 All requests to `/api/*` are handled here; Express's own router dispatches to the correct handler (`/api/extract` for PDF processing, `/api/health` for the health check).
 
-**Function timeout** — Vercel's default execution limit is 10 seconds. Very long PDFs (many pages, dense text) can push past this when pdf-parse + Claude are both invoked. If you observe 504 errors, add a `functions` block to `vercel.json`:
+**Function timeout** — The repo `vercel.json` already sets `maxDuration: 60` for `api/index.ts`. If you still see timeouts with **OCR** on very long plans, reduce `OCR_MAX_PAGES` or `OCR_RENDER_SCALE`, or raise `maxDuration` if your plan supports it.
 
-```json
-{
-  "rewrites": [{ "source": "/api/:path*", "destination": "/api/index" }],
-  "buildCommand": "cd frontend && npm run build",
-  "outputDirectory": "frontend/dist",
-  "functions": {
-    "api/index.ts": {
-      "maxDuration": 60
-    }
-  }
-}
-```
-
-**Memory** — the default 1024 MB allocation is sufficient for pdf-parse + Claude API calls. No change needed unless you profile a memory issue.
+**Memory** — Raster + Tesseract increases memory use. If the function OOMs, lower `OCR_RENDER_SCALE` or `OCR_MAX_PAGES` before raising allocated memory.
 
 ---
 
@@ -157,3 +168,8 @@ Because blobs are deleted right after processing, Blob storage stays near-zero b
 **Frontend shows no data / API calls return 404**
 - Cause: `VITE_API_BASE_URL` is set to `http://localhost:3001` in `.env.local` but the app is running on Vercel, or vice versa.
 - Fix: on Vercel, do not set `VITE_API_BASE_URL` at all — the frontend and API share the same origin, so relative `/api/*` paths resolve correctly. Only set it locally when running the Vite dev server against a separately running Express dev server.
+
+**Scan PDF / “no results” after extraction**
+- Cause: `OCR_ENGINE` defaults to `none`, so image-only pages never get Tesseract text; the model sees almost nothing and the validator drops unsupported names.
+- Fix: set `OCR_ENGINE=tesseract` on the server (see §4a), redeploy, and re-upload. Check server logs for `extract.stage` (`nativeTotalTrimmedChars`, `ocrAppliedToPages`) or run `npm run diagnose:pdf` from `backend/`.
+- The API may return `extractionWarnings` (e.g. `ocr_disabled_low_native_text`); the dashboard shows these above the report when present.

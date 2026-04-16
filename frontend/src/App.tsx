@@ -4,7 +4,7 @@ import { Dashboard } from './components/Dashboard';
 import { useExtraction } from './hooks/useExtraction';
 
 export default function App() {
-  const { stage, progress, result, error, filename, extract, reset } = useExtraction();
+  const { stage, progress, result, extractionWarnings, error, filename, extract, reset } = useExtraction();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,6 +45,19 @@ export default function App() {
 
         {stage === 'done' && result && (
           <div>
+            {extractionWarnings.length > 0 && (
+              <div
+                className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                role="status"
+              >
+                <p className="font-medium">Extraction notices</p>
+                <ul className="mt-2 list-disc pl-5 space-y-1">
+                  {extractionWarnings.map((w, i) => (
+                    <li key={`${w.code}-${i}`}>{w.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <Dashboard report={result} filename={filename ?? 'document.pdf'} />
             <button onClick={reset} className="mt-6 px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
               ← Upload another PDF

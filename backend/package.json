@@ -2,19 +2,26 @@
   "name": "backend",
   "private": true,
   "version": "0.0.0",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
     "build": "tsc",
     "start": "node dist/app.js",
-    "test": "vitest run"
+    "test": "vitest run",
+    "diagnose:pdf": "ts-node --transpile-only scripts/diagnosePdfFixture.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
+    "@napi-rs/canvas": "^0.1.56",
     "@vercel/blob": "^2.3.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^4.10.38",
+    "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

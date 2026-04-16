@@ -77,3 +77,13 @@ export interface ExtractedReport {
   outreach: OutreachActivity[];
   geographicAreas: GeographicArea[];
 }
+
+export interface ExtractionWarning {
+  code: string;
+  message: string;
+}
+
+/** POST /api/extract JSON body: report fields plus optional server warnings (OCR, low text). */
+export type ExtractionApiResponse = ExtractedReport & {
+  extractionWarnings?: ExtractionWarning[];
+};

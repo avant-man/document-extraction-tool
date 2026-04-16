@@ -1,6 +1,15 @@
 import { useState } from 'react';
 import { upload } from '@vercel/blob/client';
-import type { ExtractedReport } from '../types/extraction';
+import type { ExtractedReport, ExtractionApiResponse, ExtractionWarning } from '../types/extraction';
+
+function logExtractionWarnings(warnings: ExtractionWarning[]): void {
+  if (warnings.length === 0) return;
+  console.groupCollapsed(`[extraction] Extraction notices (${warnings.length})`);
+  for (const w of warnings) {
+    console.info(`%c${w.code}`, 'font-weight:600;color:#92400e', w.message);
+  }
+  console.groupEnd();
+}
 
 export type Stage = 'idle' | 'uploading' | 'extracting' | 'done' | 'error';
 
@@ -8,13 +17,19 @@ interface ExtractionState {
   stage: Stage;
   progress: number;       // 0–100 (upload progress tracked via onUploadProgress)
   result: ExtractedReport | null;
+  extractionWarnings: ExtractionWarning[];
   error: string | null;
   filename: string | null;
 }
 
 export function useExtraction() {
   const [state, setState] = useState<ExtractionState>({
-    stage: 'idle', progress: 0, result: null, error: null, filename: null
+    stage: 'idle',
+    progress: 0,
+    result: null,
+    extractionWarnings: [],
+    error: null,
+    filename: null
   });
 
   async function extract(file: File) {
@@ -22,6 +37,7 @@ export function useExtraction() {
       stage: 'uploading',
       progress: 0,
       result: null,
+      extractionWarnings: [],
       error: null,
       filename: file.name
     });
@@ -57,8 +73,18 @@ export function useExtraction() {
         const errBody = await response.json() as { error?: string };
         throw new Error(errBody.error ?? `HTTP ${response.status}`);
       }
-      const result: ExtractedReport = await response.json() as ExtractedReport;
-      setState(s => ({ ...s, stage: 'done', progress: 100, result, error: null }));
+      const body = (await response.json()) as ExtractionApiResponse;
+      const { extractionWarnings, ...report } = body;
+      const warnings = extractionWarnings ?? [];
+      logExtractionWarnings(warnings);
+      setState(s => ({
+        ...s,
+        stage: 'done',
+        progress: 100,
+        result: report as ExtractedReport,
+        extractionWarnings: warnings,
+        error: null
+      }));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setState(s => ({ ...s, stage: 'error', error: 'Extraction failed: ' + message }));
@@ -66,7 +92,14 @@ export function useExtraction() {
   }
 
   function reset() {
-    setState({ stage: 'idle', progress: 0, result: null, error: null, filename: null });
+    setState({
+      stage: 'idle',
+      progress: 0,
+      result: null,
+      extractionWarnings: [],
+      error: null,
+      filename: null
+    });
   }
 
   return { ...state, extract, reset };

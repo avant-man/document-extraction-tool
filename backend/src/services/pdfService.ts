@@ -9,6 +9,13 @@ export interface TextContentItemLike {
   transform?: number[];
 }
 
+export type ExtractPagesResult = {
+  /** One string per PDF page, same order as the document */
+  pages: string[];
+  /** `numpages` from pdf-parse */
+  numPages: number;
+};
+
 /**
  * Build page text from pdf.js getTextContent() items in reading order (top-to-bottom,
  * left-to-right) with newlines between detected lines. Avoids naive join order which
@@ -60,7 +67,13 @@ export function assemblePageTextFromTextContentItems(items: TextContentItemLike[
   return out;
 }
 
-export async function extractTextFromBuffer(buffer: Buffer): Promise<string> {
+/** Join per-page strings into the canonical `--- PAGE n ---` document shape used by regex + validator. */
+export function joinPageTexts(pageTexts: string[]): string {
+  if (pageTexts.length === 0) return '';
+  return pageTexts.map((text, i) => `--- PAGE ${i + 1} ---\n${text}`).join('\n\n');
+}
+
+export async function extractPagesFromBuffer(buffer: Buffer): Promise<ExtractPagesResult> {
   const t0 = Date.now();
   const pageTexts: string[] = [];
   const data = await pdfParse(buffer, {
@@ -72,22 +85,26 @@ export async function extractTextFromBuffer(buffer: Buffer): Promise<string> {
       });
     }
   });
-  let rawText: string;
+
+  let pages: string[];
   if (pageTexts.length === 0 && data.text) {
-    rawText = data.text;
+    pages = [data.text];
   } else {
-    rawText = pageTexts
-      .map((text, i) => `--- PAGE ${i + 1} ---\n${text}`)
-      .join('\n\n');
+    pages = [...pageTexts];
   }
 
-  logger.debug('pdf.extract', {
+  logger.debug('pdf.extract_pages', {
     stage: 'pdf',
     durationMs: Date.now() - t0,
     numPages: data.numpages,
-    rawTextChars: rawText.length,
-    pageTextLengths: pageTexts.map(t => t.length)
+    pageCount: pages.length,
+    pageTextLengths: pages.map(t => t.length)
   });
 
-  return rawText;
+  return { pages, numPages: data.numpages };
+}
+
+export async function extractTextFromBuffer(buffer: Buffer): Promise<string> {
+  const { pages } = await extractPagesFromBuffer(buffer);
+  return joinPageTexts(pages);
 }

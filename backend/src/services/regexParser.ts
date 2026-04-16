@@ -94,6 +94,12 @@ export function annotateText(text: string): AnnotatedDocument {
       if (nearPage) continue;
     }
 
+    // PDF page sentinels must stay exact: trimmed `---` would match hyphen bullet tagging below.
+    if (/^--- PAGE \d+ ---\s*$/.test(trimmed)) {
+      annotated.push(line);
+      continue;
+    }
+
     // Inject section markers before matching lines (MDEQ / WIP patterns)
     if (
       /\bGoal\s+\d+[:.)]/i.test(line) ||

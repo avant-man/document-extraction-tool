@@ -2,6 +2,33 @@ import { ExtractedReport } from '../types/extraction';
 import { logger } from '../lib/logger';
 import { phraseSupportedBySource } from '../lib/sourceMatch';
 
+/** When exactly one dollar literal from regexNumerics appears near the BMP name, snap cost to that value. */
+function alignReportNumerics(data: ExtractedReport, regexNumerics: Map<string, number>, sourceText: string): void {
+  if (regexNumerics.size === 0) return;
+
+  for (const bmp of data.bmps) {
+    const name = bmp.name?.trim();
+    if (!name) continue;
+
+    const lower = sourceText.toLowerCase();
+    const idx = lower.indexOf(name.toLowerCase());
+    if (idx < 0) continue;
+
+    const winStart = Math.max(0, idx - 80);
+    const winEnd = Math.min(sourceText.length, idx + name.length + 320);
+    const window = sourceText.slice(winStart, winEnd);
+
+    const dollarHits = [...regexNumerics.entries()].filter(([raw]) => raw.startsWith('$') && window.includes(raw));
+    if (dollarHits.length !== 1) continue;
+
+    const val = dollarHits[0]![1];
+    if (bmp.cost == null || Math.abs(bmp.cost - val) > 0.01) {
+      logger.info('validate.numeric_align', { field: 'cost', bmp: name, value: val });
+      bmp.cost = val;
+    }
+  }
+}
+
 function computeCompletionRate(data: ExtractedReport): {
   rate: number;
   basis: 'benchmarks' | 'implementation' | 'none';
@@ -74,8 +101,6 @@ export function validate(
     if (!(field in data)) throw new Error(`Missing field: ${field}`);
   }
 
-  void regexNumerics;
-
   const savedReportedPct = data.summary.reportedProgressPercent;
   const savedReportedSrc = data.summary.reportedProgressSource;
 
@@ -126,6 +151,8 @@ export function validate(
     removedBmpNamesSample: removedBmpNames.slice(0, 5),
     removedGeoNamesSample: removedGeoNames.slice(0, 3)
   });
+
+  alignReportNumerics(data, regexNumerics, sourceText);
 
   const { rate, basis } = computeCompletionRate(data);
   data.summary.completionRate = rate;

@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   fetchPdfBuffer: vi.fn(),
   deleteBlobSafe: vi.fn(),
   extractTextFromBuffer: vi.fn(),
+  extractPagesFromBuffer: vi.fn(),
   extractWithClaude: vi.fn(),
 }));
 
@@ -15,11 +16,18 @@ vi.mock('./services/blobService', () => ({
 
 vi.mock('./services/pdfService', () => ({
   extractTextFromBuffer: mocks.extractTextFromBuffer,
+  extractPagesFromBuffer: mocks.extractPagesFromBuffer,
+  joinPageTexts: (pages: string[]) =>
+    pages.map((t, i) => `--- PAGE ${i + 1} ---\n${t}`).join('\n\n')
 }));
 
-vi.mock('./services/claudeService', () => ({
-  extractWithClaude: mocks.extractWithClaude,
-}));
+vi.mock('./services/claudeService', async importOriginal => {
+  const mod = await importOriginal<typeof import('./services/claudeService')>();
+  return {
+    ...mod,
+    extractWithClaude: mocks.extractWithClaude
+  };
+});
 
 import app from './app';
 
@@ -46,11 +54,13 @@ describe('app (HTTP integration)', () => {
     mocks.fetchPdfBuffer.mockReset();
     mocks.deleteBlobSafe.mockReset();
     mocks.extractTextFromBuffer.mockReset();
+    mocks.extractPagesFromBuffer.mockReset();
     mocks.extractWithClaude.mockReset();
 
     mocks.fetchPdfBuffer.mockResolvedValue(Buffer.from('%PDF-1.4 minimal'));
     mocks.deleteBlobSafe.mockResolvedValue(undefined);
     mocks.extractTextFromBuffer.mockResolvedValue('plain text');
+    mocks.extractPagesFromBuffer.mockResolvedValue({ pages: ['plain text'], numPages: 1 });
     mocks.extractWithClaude.mockResolvedValue(minimalReportJson);
   });
 
@@ -70,6 +80,7 @@ describe('app (HTTP integration)', () => {
       planYear: 2024,
       completionRateBasis: 'none',
     });
+    expect(Array.isArray(res.body.extractionWarnings)).toBe(true);
     expect(mocks.fetchPdfBuffer).toHaveBeenCalledWith('https://example.com/x.pdf');
   });
 
@@ -97,5 +108,43 @@ describe('app (HTTP integration)', () => {
       .expect(502);
 
     expect(res.body).toEqual({ error: 'Failed to fetch PDF from storage' });
+  });
+
+  it('POST /api/extract returns 413 when annotated input exceeds token budget', async () => {
+    const prevBudget = process.env.EXTRACTION_INPUT_TOKEN_BUDGET;
+    process.env.EXTRACTION_INPUT_TOKEN_BUDGET = '50';
+
+    const res = await request(app)
+      .post('/api/extract')
+      .send({ blobUrl: 'https://example.com/huge.pdf' })
+      .expect(413);
+
+    expect(res.body.code).toBe('document_text_exceeds_model_context');
+    expect(res.body.detail).toBe('no_batch_fits_token_budget_or_max_batches');
+    expect(mocks.extractWithClaude).not.toHaveBeenCalled();
+
+    if (prevBudget === undefined) delete process.env.EXTRACTION_INPUT_TOKEN_BUDGET;
+    else process.env.EXTRACTION_INPUT_TOKEN_BUDGET = prevBudget;
+  });
+
+  it('POST /api/extract batches by page cap even when under input token budget', async () => {
+    const prevCap = process.env.EXTRACTION_MAX_PAGES_PER_BATCH;
+    process.env.EXTRACTION_MAX_PAGES_PER_BATCH = '1';
+
+    mocks.extractPagesFromBuffer.mockResolvedValueOnce({
+      pages: ['alpha', 'beta', 'gamma'],
+      numPages: 3
+    });
+
+    const res = await request(app)
+      .post('/api/extract')
+      .send({ blobUrl: 'https://example.com/multi.pdf' })
+      .expect(200);
+
+    expect(res.body.summary.watershedName).toBe('Test Watershed');
+    expect(mocks.extractWithClaude).toHaveBeenCalledTimes(3);
+
+    if (prevCap === undefined) delete process.env.EXTRACTION_MAX_PAGES_PER_BATCH;
+    else process.env.EXTRACTION_MAX_PAGES_PER_BATCH = prevCap;
   });
 });
