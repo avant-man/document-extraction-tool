@@ -7,6 +7,7 @@ interface DropZoneProps {
 
 export function DropZone({ onFile, disabled }: DropZoneProps) {
   const handleDrop = useCallback((e: React.DragEvent) => {
+    if (disabled) return;
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file?.type === 'application/pdf') onFile(file);

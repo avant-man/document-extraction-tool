@@ -5,7 +5,7 @@ const router = Router();
 
 router.post('/blob-upload', async (req, res, next) => {
   try {
-    const url = `http://localhost${req.url}`;
+    const url = `${req.protocol}://${req.get('host')}${req.originalUrl}`;
     const headers = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
       if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);

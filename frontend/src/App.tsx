@@ -47,6 +47,13 @@ export default function App() {
             </button>
           </div>
         )}
+
+        {stage === 'done' && !result && (
+          <div className="text-center py-16">
+            <p className="text-red-600 font-medium">Extraction returned no data.</p>
+            <button onClick={reset} className="mt-4 px-6 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">Try again</button>
+          </div>
+        )}
       </main>
     </div>
   );
