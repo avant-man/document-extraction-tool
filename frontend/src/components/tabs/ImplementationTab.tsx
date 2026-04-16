@@ -9,7 +9,7 @@ function statusPill(status: ImplementationActivity['status']) {
       ? 'bg-amber-100 text-amber-800'
       : 'bg-gray-100 text-gray-700';
   const label = status === 'in-progress' ? 'in progress' : status;
-  return <span className={`text-xs rounded px-2 py-0.5 ${classes}`}>{label}</span>;
+  return <span className={`text-xs rounded px-2 py-0.5 whitespace-nowrap ${classes}`}>{label}</span>;
 }
 
 interface Props {
@@ -58,7 +58,7 @@ export function ImplementationTab({ activities }: Props) {
                   <td className="py-2 pr-3 whitespace-nowrap">
                     {a.cost != null ? `$${a.cost.toLocaleString()}` : '—'}
                   </td>
-                  <td className="py-2 pr-3">{statusPill(a.status)}</td>
+                  <td className="py-2 pr-3 whitespace-nowrap">{statusPill(a.status)}</td>
                 </tr>
               ))}
             </tbody>

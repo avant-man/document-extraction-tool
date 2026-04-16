@@ -10,7 +10,7 @@ function benchmarkStatusPill(status: Benchmark['status']) {
       : 'bg-yellow-100 text-yellow-700';
   const label = status === 'in-progress' ? 'in progress' : status.replace('-', ' ');
   return (
-    <span className={`text-xs rounded px-2 py-0.5 ${colorClass}`}>
+    <span className={`text-xs rounded px-2 py-0.5 whitespace-nowrap ${colorClass}`}>
       {label}
     </span>
   );

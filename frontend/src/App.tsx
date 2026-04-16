@@ -15,7 +15,11 @@ export default function App() {
         <h1 className="text-xl font-semibold text-gray-800">PDF Data Extractor</h1>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-12">
+      <main
+        className={`mx-auto px-4 py-12 ${
+          stage === 'done' && result ? 'max-w-6xl' : 'max-w-4xl'
+        }`}
+      >
         {stage === 'idle' && (
           <>
             <div className="text-center mb-8">
