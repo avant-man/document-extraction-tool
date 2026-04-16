@@ -6,15 +6,18 @@ import { BMPsTab } from './tabs/BMPsTab';
 import { ImplementationTab } from './tabs/ImplementationTab';
 import { MonitoringTab } from './tabs/MonitoringTab';
 import { OutreachTab } from './tabs/OutreachTab';
+import { ChartsTab } from './tabs/ChartsTab';
+import { ExportPanel } from './ExportPanel';
 
 const TABS = ['Summary', 'Goals', 'BMPs', 'Implementation', 'Monitoring', 'Outreach', 'Charts'] as const;
 type Tab = typeof TABS[number];
 
 interface Props {
   report: ExtractedReport;
+  filename: string;
 }
 
-export function Dashboard({ report }: Props) {
+export function Dashboard({ report, filename }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('Summary');
 
   return (
@@ -46,10 +49,9 @@ export function Dashboard({ report }: Props) {
         {activeTab === 'Implementation' && <ImplementationTab activities={report.implementation} />}
         {activeTab === 'Monitoring' && <MonitoringTab metrics={report.monitoring} />}
         {activeTab === 'Outreach' && <OutreachTab activities={report.outreach} />}
-        {activeTab === 'Charts' && (
-          <div className="p-8 text-center text-gray-400">Charts coming in Spec 05</div>
-        )}
+        {activeTab === 'Charts' && <ChartsTab report={report} />}
       </div>
+      <ExportPanel report={report} filename={filename} />
     </div>
   );
 }
