@@ -32,8 +32,8 @@ export function MonitoringTab({ metrics }: Props) {
               <td className="py-2 pr-4">{m.name}</td>
               <td className="py-2 pr-4">{m.location}</td>
               <td className="py-2 pr-4">{m.frequency}</td>
-              <td className="py-2 pr-4">{m.targetValue}</td>
-              <td className="py-2 pr-4">{m.currentValue}</td>
+              <td className="py-2 pr-4">{m.targetValue ?? '—'}</td>
+              <td className="py-2 pr-4">{m.currentValue ?? '—'}</td>
               <td className="py-2 pr-4">{m.unit}</td>
               <td className="py-2 pr-4">{renderTrend(m.trend)}</td>
             </tr>
