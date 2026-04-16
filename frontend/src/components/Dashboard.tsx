@@ -4,6 +4,8 @@ import { SummaryTab } from './tabs/SummaryTab';
 import { GoalsTab } from './tabs/GoalsTab';
 import { BMPsTab } from './tabs/BMPsTab';
 import { ImplementationTab } from './tabs/ImplementationTab';
+import { MonitoringTab } from './tabs/MonitoringTab';
+import { OutreachTab } from './tabs/OutreachTab';
 
 const TABS = ['Summary', 'Goals', 'BMPs', 'Implementation', 'Monitoring', 'Outreach', 'Charts'] as const;
 type Tab = typeof TABS[number];
@@ -42,8 +44,8 @@ export function Dashboard({ report }: Props) {
         {activeTab === 'Goals' && <GoalsTab goals={report.goals} />}
         {activeTab === 'BMPs' && <BMPsTab bmps={report.bmps} />}
         {activeTab === 'Implementation' && <ImplementationTab activities={report.implementation} />}
-        {activeTab === 'Monitoring' && null}
-        {activeTab === 'Outreach' && null}
+        {activeTab === 'Monitoring' && <MonitoringTab metrics={report.monitoring} />}
+        {activeTab === 'Outreach' && <OutreachTab activities={report.outreach} />}
         {activeTab === 'Charts' && (
           <div className="p-8 text-center text-gray-400">Charts coming in Spec 05</div>
         )}
