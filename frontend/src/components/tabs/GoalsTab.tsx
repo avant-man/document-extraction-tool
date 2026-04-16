@@ -47,8 +47,12 @@ export function GoalsTab({ goals }: Props) {
       {goals.map((goal) => (
         <div key={goal.id}>
           <div
+            role="button"
+            tabIndex={0}
+            aria-expanded={openIds.has(goal.id)}
             className="cursor-pointer hover:bg-gray-50 border-b border-gray-100 p-4 flex items-center gap-3"
             onClick={() => toggle(goal.id)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(goal.id); } }}
           >
             <span className="font-medium text-gray-800 flex-1">{goal.title}</span>
             <span className="bg-gray-100 text-gray-700 text-xs rounded px-2 py-0.5">
