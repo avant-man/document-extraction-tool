@@ -3,3 +3,8 @@ node_modules/
 dist/
 .env
 *.local
+
+# Claude
+CLAUDE.md
+docs/
+
