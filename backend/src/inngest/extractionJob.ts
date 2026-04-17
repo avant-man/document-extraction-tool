@@ -11,7 +11,7 @@ import { logger } from '../lib/logger';
 import { inngest } from './client';
 
 export const extractionPipelineJob = inngest.createFunction(
-  { id: 'extraction-pipeline', name: 'Watershed extraction pipeline', retries: 1 },
+  { id: 'extraction-pipeline', name: 'Watershed extraction pipeline', retries: 4 },
   { event: 'extraction/job.requested' },
   async ({ event, step, runId, attempt, maxAttempts }) => {
     const { jobId } = event.data as { jobId: string };

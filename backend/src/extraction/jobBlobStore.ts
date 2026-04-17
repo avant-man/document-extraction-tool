@@ -3,11 +3,15 @@ import type { ExtractionJobState } from './types';
 
 const PREFIX = 'extraction-jobs';
 
-const BLOB_GET_MAX_ATTEMPTS = 3;
+/** Reads: enough attempts to ride out intermittent Vercel Blob 403s on hot paths (poll + Inngest). */
+const BLOB_GET_MAX_ATTEMPTS = 6;
 
-function isTransientBlobReadError(err: unknown): boolean {
+/** Writes: patchJobState / putJobPages must not fail the whole step on a single transient 403. */
+const BLOB_PUT_MAX_ATTEMPTS = 5;
+
+function isTransientBlobError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
-  return /403|408|429|5\d\d|fetch|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(msg);
+  return /403|408|409|429|5\d\d|fetch|ECONNRESET|ETIMEDOUT|EAI_AGAIN|Timeout/i.test(msg);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -28,8 +32,8 @@ async function getBlobBodyUtf8(pathname: string, token: string): Promise<string 
       if (!res || res.statusCode !== 200 || !res.stream) return null;
       return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
     } catch (err) {
-      if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobReadError(err)) {
-        await sleep(120 * attempt);
+      if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobError(err)) {
+        await sleep(Math.min(2000, 150 * 2 ** (attempt - 1)));
         continue;
       }
       throw err;
@@ -45,14 +49,35 @@ async function getBlobBodyBuffer(pathname: string, token: string): Promise<Buffe
       if (!res || res.statusCode !== 200 || !res.stream) return null;
       return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
     } catch (err) {
-      if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobReadError(err)) {
-        await sleep(120 * attempt);
+      if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobError(err)) {
+        await sleep(Math.min(2000, 150 * 2 ** (attempt - 1)));
         continue;
       }
       throw err;
     }
   }
   return null;
+}
+
+async function putBlobResilient(
+  pathname: string,
+  body: string | Buffer,
+  token: string,
+  contentType: string
+): Promise<Awaited<ReturnType<typeof put>>> {
+  const opts = jobPutOptions(token, contentType);
+  for (let attempt = 1; attempt <= BLOB_PUT_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await put(pathname, body, opts);
+    } catch (err) {
+      if (attempt < BLOB_PUT_MAX_ATTEMPTS && isTransientBlobError(err)) {
+        await sleep(Math.min(2000, 150 * 2 ** (attempt - 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error('putBlobResilient: exhausted attempts');
 }
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
@@ -120,9 +145,7 @@ export function jobResultPathname(jobId: string): string {
 export async function putJobState(jobId: string, state: ExtractionJobState): Promise<void> {
   const token = requireToken();
   const pathname = jobStatePathname(jobId);
-  await put(pathname, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }), {
-    ...jobPutOptions(token, 'application/json')
-  });
+  await putBlobResilient(pathname, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }), token, 'application/json');
 }
 
 export async function getJobState(jobId: string): Promise<ExtractionJobState | null> {
@@ -135,9 +158,7 @@ export async function getJobState(jobId: string): Promise<ExtractionJobState | n
 
 export async function putJobPages(jobId: string, pages: string[]): Promise<void> {
   const token = requireToken();
-  await put(jobPagesPathname(jobId), JSON.stringify({ pages }), {
-    ...jobPutOptions(token, 'application/json')
-  });
+  await putBlobResilient(jobPagesPathname(jobId), JSON.stringify({ pages }), token, 'application/json');
 }
 
 export async function getJobPages(jobId: string): Promise<string[] | null> {
@@ -151,9 +172,7 @@ export async function getJobPages(jobId: string): Promise<string[] | null> {
 
 export async function putJobPdf(jobId: string, buffer: Buffer): Promise<string> {
   const token = requireToken();
-  const blob = await put(jobPdfPathname(jobId), buffer, {
-    ...jobPutOptions(token, 'application/pdf')
-  });
+  const blob = await putBlobResilient(jobPdfPathname(jobId), buffer, token, 'application/pdf');
   return blob.url;
 }
 
@@ -169,12 +188,8 @@ export async function putAnnotatedAndRegex(
   regexEntries: [string, number][]
 ): Promise<void> {
   const token = requireToken();
-  await put(jobAnnotatedPathname(jobId), annotatedText, {
-    ...jobPutOptions(token, 'text/plain; charset=utf-8')
-  });
-  await put(jobRegexNumericsPathname(jobId), JSON.stringify({ entries: regexEntries }), {
-    ...jobPutOptions(token, 'application/json')
-  });
+  await putBlobResilient(jobAnnotatedPathname(jobId), annotatedText, token, 'text/plain; charset=utf-8');
+  await putBlobResilient(jobRegexNumericsPathname(jobId), JSON.stringify({ entries: regexEntries }), token, 'application/json');
 }
 
 export async function getAnnotatedText(jobId: string): Promise<string | null> {
@@ -195,9 +210,7 @@ export async function getRegexNumericsMap(jobId: string): Promise<Map<string, nu
 
 export async function putPartialBatch(jobId: string, batchIndex: number, jsonStr: string): Promise<void> {
   const token = requireToken();
-  await put(jobPartialPathname(jobId, batchIndex), jsonStr, {
-    ...jobPutOptions(token, 'application/json')
-  });
+  await putBlobResilient(jobPartialPathname(jobId, batchIndex), jsonStr, token, 'application/json');
 }
 
 export async function getPartialBatch(jobId: string, batchIndex: number): Promise<string | null> {
@@ -216,9 +229,7 @@ export async function getJobResultJson(jobId: string): Promise<unknown | null> {
 
 export async function putJobResult(jobId: string, body: unknown): Promise<string> {
   const token = requireToken();
-  const blob = await put(jobResultPathname(jobId), JSON.stringify(body), {
-    ...jobPutOptions(token, 'application/json')
-  });
+  const blob = await putBlobResilient(jobResultPathname(jobId), JSON.stringify(body), token, 'application/json');
   return blob.url;
 }
 
