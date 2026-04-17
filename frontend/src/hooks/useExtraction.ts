@@ -22,6 +22,17 @@ interface ExtractionState {
   filename: string | null;
 }
 
+function parseJsonErrorField(text: string): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: string };
+    return parsed.error ?? trimmed.slice(0, 500);
+  } catch {
+    return trimmed.slice(0, 500);
+  }
+}
+
 export function useExtraction() {
   const [state, setState] = useState<ExtractionState>({
     stage: 'idle',
@@ -69,11 +80,22 @@ export function useExtraction() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blobUrl, filename: file.name })
       });
+      const rawBody = await response.text();
       if (!response.ok) {
-        const errBody = await response.json() as { error?: string };
-        throw new Error(errBody.error ?? `HTTP ${response.status}`);
+        const errMsg =
+          parseJsonErrorField(rawBody) ?? (rawBody.trim().slice(0, 500) || `HTTP ${response.status}`);
+        throw new Error(errMsg);
       }
-      const body = (await response.json()) as ExtractionApiResponse;
+      let body: ExtractionApiResponse;
+      try {
+        body = JSON.parse(rawBody) as ExtractionApiResponse;
+      } catch {
+        throw new Error(
+          rawBody.trim().startsWith('<')
+            ? 'Extraction service returned an HTML error page instead of JSON.'
+            : `Invalid JSON from extraction API: ${rawBody.trim().slice(0, 120)}`
+        );
+      }
       const { extractionWarnings, ...report } = body;
       const warnings = extractionWarnings ?? [];
       logExtractionWarnings(warnings);
