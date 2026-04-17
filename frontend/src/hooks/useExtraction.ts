@@ -2,9 +2,43 @@ import { useState } from 'react';
 import { upload } from '@vercel/blob/client';
 import type {
   ExtractedReport,
+  ExtractionApiResponse,
   ExtractionJobPollResponse,
   ExtractionWarning
 } from '../types/extraction';
+
+/** When the job is `completed` but the payload is missing shape, still leave extracting UI. */
+function isCompletedResultBody(
+  value: ExtractionJobPollResponse['result']
+): value is ExtractionApiResponse {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    'summary' in value &&
+    value.summary != null &&
+    typeof value.summary === 'object'
+  );
+}
+
+const FALLBACK_COMPLETED_BODY: ExtractionApiResponse = {
+  summary: {
+    watershedName: '',
+    planYear: 0,
+    totalGoals: 0,
+    totalBMPs: 0,
+    completionRate: 0,
+    completionRateBasis: 'none',
+    totalEstimatedCost: 0,
+    geographicScope: ''
+  },
+  goals: [],
+  bmps: [],
+  implementation: [],
+  monitoring: [],
+  outreach: [],
+  geographicAreas: [],
+  extractionWarnings: []
+};
 
 const POLL_MS = import.meta.env.MODE === 'test' ? 0 : 2000;
 const MAX_CONSECUTIVE_TRANSIENT_POLLS = 25;
@@ -238,8 +272,19 @@ export function useExtraction() {
         if (poll.status === 'failed') {
           throw new Error(poll.error ?? 'Extraction job failed');
         }
-        if (poll.status === 'completed' && poll.result) {
-          const body = poll.result;
+        if (poll.status === 'completed') {
+          const body: ExtractionApiResponse = isCompletedResultBody(poll.result)
+            ? poll.result
+            : {
+                ...FALLBACK_COMPLETED_BODY,
+                extractionWarnings:
+                  poll.result &&
+                  typeof poll.result === 'object' &&
+                  'extractionWarnings' in poll.result &&
+                  Array.isArray((poll.result as ExtractionApiResponse).extractionWarnings)
+                    ? ((poll.result as ExtractionApiResponse).extractionWarnings ?? [])
+                    : FALLBACK_COMPLETED_BODY.extractionWarnings
+              };
           const { extractionWarnings, ...report } = body;
           const warnings = extractionWarnings ?? [];
           logExtractionWarnings(warnings);

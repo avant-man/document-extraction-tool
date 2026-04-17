@@ -224,7 +224,22 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
 async function patchJobState(jobId: string, patch: Partial<ExtractionJobState>): Promise<void> {
   const prev = await jobBlob.getJobState(jobId);
   if (!prev) throw new Error(`job state missing: ${jobId}`);
-  await jobBlob.putJobState(jobId, { ...prev, ...patch, updatedAt: new Date().toISOString() });
+  const merged: ExtractionJobState = { ...prev, ...patch, updatedAt: new Date().toISOString() };
+  // Stale Blob reads can return an older `stage` (e.g. still `ocr`) after annotate-plan wrote
+  // `claude`. Merging only `{ claudeBatchCurrent }` would keep that stale stage and the poll
+  // API would mis-report OCR while Claude batches run.
+  if (
+    patch.claudeBatchCurrent !== undefined &&
+    merged.stage !== 'merging' &&
+    merged.stage !== 'done' &&
+    merged.stage !== 'failed'
+  ) {
+    merged.stage = 'claude';
+    if (!(merged.batchCount && merged.batchCount > 0) && merged.batches && merged.batches.length > 0) {
+      merged.batchCount = merged.batches.length;
+    }
+  }
+  await jobBlob.putJobState(jobId, merged);
 }
 
 export async function extractionJobFetchNative(jobId: string): Promise<FetchNativeStepResult> {

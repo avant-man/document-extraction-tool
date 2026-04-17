@@ -9,16 +9,30 @@ import { sanitizeBlobUrlForLog } from '../lib/sanitizeUrl';
 
 const router = Router();
 
+/** Blob RMW races can leave `stage` as `ocr` while `claudeBatchCurrent` advances; normalize for poll UX. */
+function resolvePollStage(state: ExtractionJobState): string {
+  const s = state.stage;
+  if (s === 'done' || s === 'failed' || s === 'merging') return s;
+  if ((state.claudeBatchCurrent ?? 0) > 0) return 'claude';
+  return s;
+}
+
 function computeProgress(state: ExtractionJobState): JobProgress {
   const ocrTotal = state.ocrChunkPlans?.length ?? 0;
   const ocrCur = state.ocrChunkCurrent ?? 0;
-  const claudeTotal =
-    state.batchCount != null && state.batchCount > 0
-      ? state.batchCount
+  const batchFromCount = state.batchCount != null && state.batchCount > 0 ? state.batchCount : 0;
+  const batchFromBatches = state.batches?.length ?? 0;
+  const effectiveBatchTotal = Math.max(batchFromCount, batchFromBatches);
+  const claudeCur = state.claudeBatchCurrent ?? null;
+  let claudeTotal: number | null =
+    effectiveBatchTotal > 0
+      ? effectiveBatchTotal
       : state.useBatchedExtraction === false
         ? 1
         : null;
-  const claudeCur = state.claudeBatchCurrent ?? null;
+  if (claudeTotal == null && (claudeCur ?? 0) > 0) {
+    claudeTotal = Math.max(claudeCur ?? 0, 1);
+  }
 
   return {
     ocrChunk: ocrTotal > 0 ? ocrCur : null,
@@ -164,10 +178,11 @@ router.get('/extract/jobs/:jobId', (req, res, next) => {
         return;
       }
 
+      const pollStage = resolvePollStage(state);
       res.status(200).json({
         jobId,
         status: state.status,
-        stage: state.stage,
+        stage: pollStage,
         progress,
         result: null,
         error: null
