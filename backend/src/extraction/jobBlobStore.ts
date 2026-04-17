@@ -4,7 +4,9 @@ import type { ExtractionJobState } from './types';
 const PREFIX = 'extraction-jobs';
 
 function publicReadOpts(token: string) {
-  return { access: 'public' as const, token, useCache: false as const };
+  // Do not set useCache: false here: for public blobs the SDK still appends ?cache=0,
+  // which can make the blob origin respond 400. useCache is only meaningful for private blobs.
+  return { access: 'public' as const, token };
 }
 
 /** Read by known pathname (avoids list() truncation missing state.json, etc.). */

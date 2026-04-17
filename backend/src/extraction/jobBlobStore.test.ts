@@ -26,7 +26,7 @@ describe('jobBlobStore', () => {
     process.env.BLOB_READ_WRITE_TOKEN = prevToken;
   });
 
-  it('getJobState reads by pathname with public access and useCache false', async () => {
+  it('getJobState reads by pathname with public access', async () => {
     const state = { jobId: 'job-1', status: 'running' as const, stage: 'claude' as const };
     const json = JSON.stringify(state);
     const enc = new TextEncoder();
@@ -45,8 +45,7 @@ describe('jobBlobStore', () => {
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(mockGet).toHaveBeenCalledWith(jobStatePathname('job-1'), {
       access: 'public',
-      token: 'test-token',
-      useCache: false
+      token: 'test-token'
     });
   });
 
