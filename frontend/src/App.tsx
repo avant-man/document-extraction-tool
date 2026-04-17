@@ -14,7 +14,9 @@ export default function App() {
     extract,
     reset,
     jobLabel,
-    pollNotice
+    pollNotice,
+    extractingStartedAt,
+    jobUpdatedAt
   } = useExtraction();
 
   return (
@@ -47,6 +49,8 @@ export default function App() {
             progress={progress}
             detailLabel={jobLabel}
             pollNotice={pollNotice}
+            extractingStartedAt={extractingStartedAt}
+            jobUpdatedAt={jobUpdatedAt}
           />
         )}
 

@@ -66,6 +66,10 @@ interface ExtractionState {
   jobStage: string | null;
   jobProgress: ExtractionJobPollResponse['progress'] | null;
   pollNotice: string | null;
+  /** Client clock when entering extracting (for elapsed UI during long OCR). */
+  extractingStartedAt: number | null;
+  /** Last successful poll `jobUpdatedAt` from server (chunk / stage writes). */
+  jobUpdatedAt: string | null;
 }
 
 function parseJsonErrorField(text: string): string | undefined {
@@ -156,7 +160,9 @@ export function useExtraction() {
     filename: null,
     jobStage: null,
     jobProgress: null,
-    pollNotice: null
+    pollNotice: null,
+    extractingStartedAt: null,
+    jobUpdatedAt: null
   });
 
   async function extract(file: File) {
@@ -169,7 +175,9 @@ export function useExtraction() {
       filename: file.name,
       jobStage: null,
       jobProgress: null,
-      pollNotice: null
+      pollNotice: null,
+      extractingStartedAt: null,
+      jobUpdatedAt: null
     });
 
     let blobUrl: string;
@@ -195,7 +203,9 @@ export function useExtraction() {
       progress: 100,
       jobStage: 'queued',
       jobProgress: null,
-      pollNotice: null
+      pollNotice: null,
+      extractingStartedAt: Date.now(),
+      jobUpdatedAt: null
     }));
     const apiBase = import.meta.env.VITE_API_BASE_URL ?? '';
 
@@ -266,7 +276,11 @@ export function useExtraction() {
           ...s,
           jobStage: poll.stage,
           jobProgress: poll.progress,
-          pollNotice: null
+          pollNotice: null,
+          jobUpdatedAt:
+            typeof poll.jobUpdatedAt === 'string' && poll.jobUpdatedAt.length > 0
+              ? poll.jobUpdatedAt
+              : s.jobUpdatedAt
         }));
 
         if (poll.status === 'failed') {
@@ -297,7 +311,9 @@ export function useExtraction() {
             error: null,
             jobStage: 'done',
             jobProgress: poll.progress,
-            pollNotice: null
+            pollNotice: null,
+            extractingStartedAt: null,
+            jobUpdatedAt: null
           }));
           return;
         }
@@ -310,7 +326,9 @@ export function useExtraction() {
         ...s,
         stage: 'error',
         error: 'Extraction failed: ' + message,
-        pollNotice: null
+        pollNotice: null,
+        extractingStartedAt: null,
+        jobUpdatedAt: null
       }));
     }
   }
@@ -325,7 +343,9 @@ export function useExtraction() {
       filename: null,
       jobStage: null,
       jobProgress: null,
-      pollNotice: null
+      pollNotice: null,
+      extractingStartedAt: null,
+      jobUpdatedAt: null
     });
   }
 

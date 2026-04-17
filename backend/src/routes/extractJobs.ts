@@ -146,6 +146,7 @@ router.get('/extract/jobs/:jobId', (req, res, next) => {
           status: 'failed',
           stage: 'failed',
           progress,
+          jobUpdatedAt: state.updatedAt,
           error: state.error ?? 'Extraction failed',
           result: null
         });
@@ -173,6 +174,7 @@ router.get('/extract/jobs/:jobId', (req, res, next) => {
           status: 'completed',
           stage: 'done',
           progress,
+          jobUpdatedAt: state.updatedAt,
           result: raw
         });
         return;
@@ -184,6 +186,7 @@ router.get('/extract/jobs/:jobId', (req, res, next) => {
         status: state.status,
         stage: pollStage,
         progress,
+        jobUpdatedAt: state.updatedAt,
         result: null,
         error: null
       });

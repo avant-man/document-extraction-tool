@@ -95,8 +95,14 @@ async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffe
   return Buffer.concat(chunks);
 }
 
+/** Trimmed token; Vercel/env paste often adds trailing newline → Blob API 403 on get while put may still succeed. */
+function blobRwToken(): string | null {
+  const t = process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  return t || null;
+}
+
 function requireToken(): string {
-  const t = process.env.BLOB_READ_WRITE_TOKEN;
+  const t = blobRwToken();
   if (!t) {
     throw new Error('BLOB_READ_WRITE_TOKEN is required for extraction jobs');
   }
@@ -149,7 +155,7 @@ export async function putJobState(jobId: string, state: ExtractionJobState): Pro
 }
 
 export async function getJobState(jobId: string): Promise<ExtractionJobState | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   const text = await getBlobBodyUtf8(jobStatePathname(jobId), token);
   if (text == null) return null;
@@ -162,7 +168,7 @@ export async function putJobPages(jobId: string, pages: string[]): Promise<void>
 }
 
 export async function getJobPages(jobId: string): Promise<string[] | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   const text = await getBlobBodyUtf8(jobPagesPathname(jobId), token);
   if (text == null) return null;
@@ -177,7 +183,7 @@ export async function putJobPdf(jobId: string, buffer: Buffer): Promise<string> 
 }
 
 export async function getJobPdfBuffer(jobId: string): Promise<Buffer | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   return getBlobBodyBuffer(jobPdfPathname(jobId), token);
 }
@@ -193,13 +199,13 @@ export async function putAnnotatedAndRegex(
 }
 
 export async function getAnnotatedText(jobId: string): Promise<string | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   return getBlobBodyUtf8(jobAnnotatedPathname(jobId), token);
 }
 
 export async function getRegexNumericsMap(jobId: string): Promise<Map<string, number> | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   const text = await getBlobBodyUtf8(jobRegexNumericsPathname(jobId), token);
   if (text == null) return null;
@@ -214,13 +220,13 @@ export async function putPartialBatch(jobId: string, batchIndex: number, jsonStr
 }
 
 export async function getPartialBatch(jobId: string, batchIndex: number): Promise<string | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   return getBlobBodyUtf8(jobPartialPathname(jobId, batchIndex), token);
 }
 
 export async function getJobResultJson(jobId: string): Promise<unknown | null> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return null;
   const text = await getBlobBodyUtf8(jobResultPathname(jobId), token);
   if (text == null) return null;
@@ -234,7 +240,7 @@ export async function putJobResult(jobId: string, body: unknown): Promise<string
 }
 
 export async function deleteJobStateBlob(jobId: string): Promise<void> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return;
   try {
     const meta = await head(jobStatePathname(jobId), { token });
@@ -246,7 +252,7 @@ export async function deleteJobStateBlob(jobId: string): Promise<void> {
 
 /** Removes PDF, pages, annotated text, regex map, and Claude partials. Keeps state.json and result.json for GET /jobs until TTL or explicit cleanup. */
 export async function deleteJobIntermediates(jobId: string): Promise<void> {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const token = blobRwToken();
   if (!token) return;
   const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 1000 });
   for (const b of blobs) {

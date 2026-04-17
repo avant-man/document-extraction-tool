@@ -99,6 +99,8 @@ export type ExtractionJobPollResponse = {
     claudeBatch: number | null;
     claudeBatchesTotal: number | null;
   };
+  /** ISO 8601; last server write to job state (chunk boundaries, stage changes). */
+  jobUpdatedAt?: string;
   result: ExtractionApiResponse | null;
   error?: string | null;
   /** Present on 503 responses when the client should retry polling. */
