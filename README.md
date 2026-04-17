@@ -4,6 +4,17 @@ Automated extraction of goals, BMPs, and key metrics from Mississippi Watershed 
 
 **Live demo:** [deploy to Vercel and fill in URL]
 
+## Documentation (assessment deliverables)
+
+| Doc | What it covers |
+|-----|------------------|
+| [EXTRACTION_LOGIC.md](EXTRACTION_LOGIC.md) | Hybrid regex + Claude pipeline, validation, format handling |
+| [TESTING.md](TESTING.md) | Accuracy validation against MDEQ watershed plans |
+| [ANALYTICS.md](ANALYTICS.md) | Dashboard metrics from structured data (not LLM prose) |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Vercel, Blob, Inngest, environment variables |
+
+**Topic index:** [docs/README.md](docs/README.md) — includes [Large files and accuracy](docs/extraction/large-files-and-accuracy.md) (serverless upload path, job chunking, accuracy layers).
+
 ## Stack
 
 | Layer | Tech |
@@ -16,25 +27,11 @@ Automated extraction of goals, BMPs, and key metrics from Mississippi Watershed 
 
 ## Architecture
 
-Upload flow: **browser → Vercel Blob → async job (`POST /api/extract/jobs`) → Inngest steps → poll `GET /api/extract/jobs/:jobId` → Dashboard**
+**Upload and extract (production):** browser → **Vercel Blob** → **`POST /api/extract/jobs`** (202 + `jobId`) → **Inngest** (fetch, OCR chunks, Claude batches, merge/validate) → poll **`GET /api/extract/jobs/:jobId`** → dashboard. Diagrams: [docs/extraction/large-files-and-accuracy.md](docs/extraction/large-files-and-accuracy.md).
 
-```
-Browser
-  │
-  ├─ Upload PDF → Vercel Blob (returns blobUrl)
-  │
-  ├─ POST /api/extract/jobs { blobUrl, filename }  → 202 { jobId }
-  │
-  └─ Poll GET /api/extract/jobs/:jobId every ~2s until completed | failed
-       │
-       └─ Inngest (durable steps): fetch PDF → OCR chunks → Claude batch(es) → merge + validate
-            │
-            └─ ExtractedReport → Dashboard (6 tabs + charts)
-```
+Sync **`POST /api/extract`** exists for integration tests and short local runs only (not for long runs on serverless).
 
-A synchronous **`POST /api/extract`** route still exists for integration tests and short local runs; it is **not** suitable for multi-minute extractions on Vercel (single-invocation time limits). Production traffic should use jobs + poll only.
-
-**Verify async extraction is configured:** `GET /api/health` returns `{ ok: true, asyncExtraction: { ready, missing } }`. On Vercel, `ready` should be `true` (both `BLOB_READ_WRITE_TOKEN` and `INNGEST_EVENT_KEY` set). If `ready` is `false`, check `missing` against **Settings → Environment Variables** and [Inngest](https://app.inngest.com) → **Manage → API keys**.
+**Health:** `GET /api/health` → `{ ok, asyncExtraction: { ready, missing } }` — use to confirm `BLOB_READ_WRITE_TOKEN` and `INNGEST_EVENT_KEY` on Vercel.
 
 ## Local Development Setup
 

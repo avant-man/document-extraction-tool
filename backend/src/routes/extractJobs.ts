@@ -83,7 +83,9 @@ router.post('/extract/jobs', (req, res) => {
 
     logger.info('extract.jobs.accepted', {
       jobId,
-      blobRef: sanitizeBlobUrlForLog(blobUrl)
+      blobRef: sanitizeBlobUrlForLog(blobUrl),
+      inngestStatus: 'event_queued',
+      inngestEvent: 'extraction/job.requested'
     });
 
     return res.status(202).json({ jobId });

@@ -7,13 +7,25 @@ import {
   extractionJobMergeAndValidate,
   extractionJobOcrChunk
 } from '../extraction/pipeline';
+import { logger } from '../lib/logger';
 import { inngest } from './client';
 
 export const extractionPipelineJob = inngest.createFunction(
   { id: 'extraction-pipeline', name: 'Watershed extraction pipeline', retries: 1 },
   { event: 'extraction/job.requested' },
-  async ({ event, step }) => {
+  async ({ event, step, runId, attempt, maxAttempts }) => {
     const { jobId } = event.data as { jobId: string };
+
+    logger.info('inngest.extraction.start', {
+      stage: 'inngest_run',
+      status: 'started',
+      jobId,
+      inngestRunId: runId,
+      inngestEventId: event.id,
+      inngestEventName: event.name,
+      attempt,
+      maxAttempts: maxAttempts ?? null
+    });
 
     try {
       const ctx = await step.run('fetch-native', async () => extractionJobFetchNative(jobId));
