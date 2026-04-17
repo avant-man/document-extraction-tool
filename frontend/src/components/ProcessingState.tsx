@@ -3,10 +3,17 @@ import type { Stage } from '../hooks/useExtraction';
 interface ProcessingStateProps {
   stage: Extract<Stage, 'uploading' | 'extracting'>;
   progress: number;
+  /** When extracting, optional server-reported step (OCR / Claude batches). */
+  detailLabel?: string | null;
 }
 
-export function ProcessingState({ stage, progress }: ProcessingStateProps) {
-  const label = stage === 'uploading' ? 'Uploading PDF...' : 'Extracting data with AI...';
+export function ProcessingState({ stage, progress, detailLabel }: ProcessingStateProps) {
+  const label =
+    stage === 'uploading'
+      ? 'Uploading PDF…'
+      : detailLabel && detailLabel.length > 0
+        ? detailLabel
+        : 'Extracting data with AI…';
   return (
     <div className="text-center py-16">
       <div className="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4" />

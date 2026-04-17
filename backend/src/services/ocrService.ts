@@ -75,6 +75,13 @@ export function getOcrMaxPagesPerRequest(): number {
   return parsePositiveInt(process.env.OCR_MAX_PAGES, DEFAULT_OCR_MAX_PAGES);
 }
 
+const DEFAULT_OCR_PAGES_PER_STEP = 15;
+
+/** Sparse pages processed per durable OCR step (async jobs). Env: OCR_PAGES_PER_STEP */
+export function getOcrPagesPerStep(): number {
+  return parsePositiveInt(process.env.OCR_PAGES_PER_STEP, DEFAULT_OCR_PAGES_PER_STEP);
+}
+
 export type ApplyOcrParams = {
   pdfBuffer: Buffer;
   pages: string[];
@@ -121,7 +128,7 @@ export async function applyOcrToSparsePages(params: ApplyOcrParams): Promise<App
       if (native.trim().length >= threshold) continue;
 
       const raster = await tryRenderPdfPageToPngBuffer(pdfBuffer, pageNum, scale);
-      if (!raster.ok) {
+      if (raster.ok === false) {
         rasterFailures.push({ pageNumber1Based: pageNum, message: raster.message });
         continue;
       }

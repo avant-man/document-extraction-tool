@@ -87,3 +87,18 @@ export interface ExtractionWarning {
 export type ExtractionApiResponse = ExtractedReport & {
   extractionWarnings?: ExtractionWarning[];
 };
+
+/** GET /api/extract/jobs/:jobId while running or completed. */
+export type ExtractionJobPollResponse = {
+  jobId: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  stage: string;
+  progress: {
+    ocrChunk: number | null;
+    ocrChunksTotal: number | null;
+    claudeBatch: number | null;
+    claudeBatchesTotal: number | null;
+  };
+  result: ExtractionApiResponse | null;
+  error?: string | null;
+};

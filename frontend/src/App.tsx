@@ -4,7 +4,8 @@ import { Dashboard } from './components/Dashboard';
 import { useExtraction } from './hooks/useExtraction';
 
 export default function App() {
-  const { stage, progress, result, extractionWarnings, error, filename, extract, reset } = useExtraction();
+  const { stage, progress, result, extractionWarnings, error, filename, extract, reset, jobLabel } =
+    useExtraction();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -31,7 +32,7 @@ export default function App() {
         )}
 
         {(stage === 'uploading' || stage === 'extracting') && (
-          <ProcessingState stage={stage} progress={progress} />
+          <ProcessingState stage={stage} progress={progress} detailLabel={jobLabel} />
         )}
 
         {stage === 'error' && (

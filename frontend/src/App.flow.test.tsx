@@ -40,14 +40,34 @@ describe('App extraction flow', () => {
   beforeEach(() => {
     vi.stubGlobal(
       'fetch',
-      vi.fn((input: RequestInfo | URL) => {
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = resolveFetchUrl(input);
-        if (url.includes('/api/extract')) {
+        if (url.includes('/api/extract/jobs')) {
+          if (init?.method === 'POST') {
+            return Promise.resolve(
+              new Response(JSON.stringify({ jobId: 'job-test' }), {
+                status: 202,
+                headers: { 'Content-Type': 'application/json' }
+              })
+            );
+          }
           return Promise.resolve(
-            new Response(JSON.stringify(minimalReport), {
-              status: 200,
-              headers: { 'Content-Type': 'application/json' },
-            })
+            new Response(
+              JSON.stringify({
+                jobId: 'job-test',
+                status: 'completed',
+                stage: 'done',
+                progress: {
+                  ocrChunk: null,
+                  ocrChunksTotal: null,
+                  claudeBatch: 1,
+                  claudeBatchesTotal: 1
+                },
+                result: minimalReport,
+                error: null
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            )
           );
         }
         return Promise.resolve(new Response('not found', { status: 404 }));

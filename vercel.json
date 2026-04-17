@@ -1,10 +1,12 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [{ "source": "/api/:path*", "destination": "/api/index" }],
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/dist",
+  "fluid": true,
   "functions": {
     "api/index.ts": {
-      "maxDuration": 300,
+      "maxDuration": 800,
       "includeFiles": "**/{pdfjs-dist,tesseract.js-core,@napi-rs/canvas}/**"
     }
   }
