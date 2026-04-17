@@ -26,6 +26,17 @@ function requireToken(): string {
   return t;
 }
 
+/** Stable pathnames per job; retries / step replays must overwrite. */
+function jobPutOptions(token: string, contentType: string) {
+  return {
+    access: 'public' as const,
+    addRandomSuffix: false as const,
+    allowOverwrite: true,
+    token,
+    contentType
+  };
+}
+
 export function jobPdfPathname(jobId: string): string {
   return `${PREFIX}/${jobId}/source.pdf`;
 }
@@ -58,10 +69,7 @@ export async function putJobState(jobId: string, state: ExtractionJobState): Pro
   const token = requireToken();
   const pathname = jobStatePathname(jobId);
   await put(pathname, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }), {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'application/json'
+    ...jobPutOptions(token, 'application/json')
   });
 }
 
@@ -80,10 +88,7 @@ export async function getJobState(jobId: string): Promise<ExtractionJobState | n
 export async function putJobPages(jobId: string, pages: string[]): Promise<void> {
   const token = requireToken();
   await put(jobPagesPathname(jobId), JSON.stringify({ pages }), {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'application/json'
+    ...jobPutOptions(token, 'application/json')
   });
 }
 
@@ -103,10 +108,7 @@ export async function getJobPages(jobId: string): Promise<string[] | null> {
 export async function putJobPdf(jobId: string, buffer: Buffer): Promise<string> {
   const token = requireToken();
   const blob = await put(jobPdfPathname(jobId), buffer, {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'application/pdf'
+    ...jobPutOptions(token, 'application/pdf')
   });
   return blob.url;
 }
@@ -129,16 +131,10 @@ export async function putAnnotatedAndRegex(
 ): Promise<void> {
   const token = requireToken();
   await put(jobAnnotatedPathname(jobId), annotatedText, {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'text/plain; charset=utf-8'
+    ...jobPutOptions(token, 'text/plain; charset=utf-8')
   });
   await put(jobRegexNumericsPathname(jobId), JSON.stringify({ entries: regexEntries }), {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'application/json'
+    ...jobPutOptions(token, 'application/json')
   });
 }
 
@@ -170,10 +166,7 @@ export async function getRegexNumericsMap(jobId: string): Promise<Map<string, nu
 export async function putPartialBatch(jobId: string, batchIndex: number, jsonStr: string): Promise<void> {
   const token = requireToken();
   await put(jobPartialPathname(jobId, batchIndex), jsonStr, {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'application/json'
+    ...jobPutOptions(token, 'application/json')
   });
 }
 
@@ -204,10 +197,7 @@ export async function getJobResultJson(jobId: string): Promise<unknown | null> {
 export async function putJobResult(jobId: string, body: unknown): Promise<string> {
   const token = requireToken();
   const blob = await put(jobResultPathname(jobId), JSON.stringify(body), {
-    access: 'public',
-    addRandomSuffix: false,
-    token,
-    contentType: 'application/json'
+    ...jobPutOptions(token, 'application/json')
   });
   return blob.url;
 }
