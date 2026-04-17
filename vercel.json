@@ -5,7 +5,11 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 300,
-      "includeFiles": "**/tesseract.js-core/**/*.wasm"
+      "includeFiles": [
+        "**/tesseract.js-core/**/*.wasm",
+        "**/pdfjs-dist/**/pdf.worker.mjs",
+        "**/@napi-rs/canvas/**/*.node"
+      ]
     }
   }
 }

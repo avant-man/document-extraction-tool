@@ -1,4 +1,5 @@
 import { estimateClaudeExtractionInputTokens } from './tokenBudget';
+import { isBlankEnv } from './stringUtils';
 
 /**
  * Upper bound for first-batch hint length when packing pages (real hint uses actual batch/page numbers).
@@ -68,8 +69,8 @@ export function buildClaudeUserContentForBatch(annotatedBatchBody: string, batch
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const n = Number.parseInt(raw, 10);
+  if (isBlankEnv(raw)) return fallback;
+  const n = Number.parseInt(String(raw), 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
@@ -83,10 +84,10 @@ export function getExtractionMaxBatches(): number {
  */
 export function getExtractionMaxPagesPerBatch(): number {
   const raw = process.env.EXTRACTION_MAX_PAGES_PER_BATCH;
-  if (raw === undefined || raw.trim() === '') {
+  if (isBlankEnv(raw)) {
     return Number.POSITIVE_INFINITY;
   }
-  const n = Number.parseInt(raw, 10);
+  const n = Number.parseInt(String(raw), 10);
   if (!Number.isFinite(n) || n <= 0) {
     return Number.POSITIVE_INFINITY;
   }

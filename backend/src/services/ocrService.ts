@@ -2,6 +2,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { logger } from '../lib/logger';
 import { getSparseCharThreshold } from '../lib/sparsePages';
+import { isBlankEnv, safeTrim } from '../lib/stringUtils';
 import { tryRenderPdfPageToPngBuffer, getPdfRenderScale } from './pdfRasterService';
 
 /** Keep in sync with backend `package.json` tesseract.js-core version (WASM base URL on CDN). */
@@ -58,14 +59,14 @@ export type OcrEngineKind = 'none' | 'tesseract';
 const DEFAULT_OCR_MAX_PAGES = 60;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const n = Number.parseInt(raw, 10);
+  if (isBlankEnv(raw)) return fallback;
+  const n = Number.parseInt(String(raw), 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 /** `none` skips OCR. `tesseract` runs Tesseract on sparse pages (see sparsePages + raster). */
 export function getOcrEngineKind(): OcrEngineKind {
-  const v = (process.env.OCR_ENGINE ?? 'none').trim().toLowerCase();
+  const v = safeTrim(process.env.OCR_ENGINE ?? 'none').toLowerCase();
   if (v === 'tesseract') return 'tesseract';
   return 'none';
 }

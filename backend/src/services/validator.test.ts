@@ -169,4 +169,35 @@ describe('validate', () => {
     const out = validate(raw, new Map(), 'text');
     expect(out.summary.reportedProgressPercent).toBeUndefined();
   });
+
+  it('does not throw when goals array contains null or non-string titles', () => {
+    const raw = JSON.stringify({
+      ...baseReport(),
+      goals: [
+        null,
+        {
+          id: 'g1',
+          title: 123 as unknown as string,
+          description: 'd',
+          benchmarks: [],
+          pollutants: [],
+          targetReduction: 0
+        },
+        {
+          id: 'g2',
+          title: 'Reduce sediment loads from agricultural lands',
+          description: 'd',
+          benchmarks: [null, { description: 'b1', target: 1, unit: 'u', current: 0, status: 'met' }],
+          pollutants: [],
+          targetReduction: 0
+        }
+      ]
+    });
+    const sourceText =
+      'Management Goals. Reduce sediment loads from agricultural lands in the study area.';
+    const out = validate(raw, new Map(), sourceText);
+    expect(out.goals).toHaveLength(1);
+    expect(out.goals[0]!.title).toBe('Reduce sediment loads from agricultural lands');
+    expect(out.summary.completionRateBasis).toBe('benchmarks');
+  });
 });

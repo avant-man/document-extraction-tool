@@ -1,3 +1,5 @@
+import { isBlankEnv } from './stringUtils';
+
 /**
  * Conservative Claude input sizing: Anthropic tokenizer is ~4 chars/token for English;
  * we use a slightly tighter ratio so preflight errs on the safe side.
@@ -21,14 +23,14 @@ export class DocumentTextExceedsModelContextError extends Error {
 }
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const n = Number.parseInt(raw, 10);
+  if (isBlankEnv(raw)) return fallback;
+  const n = Number.parseInt(String(raw), 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 function parsePositiveFloat(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const n = Number.parseFloat(raw);
+  if (isBlankEnv(raw)) return fallback;
+  const n = Number.parseFloat(String(raw));
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 

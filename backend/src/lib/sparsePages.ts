@@ -1,3 +1,5 @@
+import { isBlankEnv } from './stringUtils';
+
 /**
  * Pages with very little selectable text are candidates for OCR (scan-only / partial layers).
  * Threshold counts trimmed characters on the native extracted string for that page.
@@ -9,8 +11,8 @@ const DEFAULT_SPARSE_MIN_ALNUM_RATIO = 0.12;
 
 export function getSparseCharThreshold(): number {
   const raw = process.env.OCR_SPARSE_CHAR_THRESHOLD;
-  if (raw === undefined || raw.trim() === '') return DEFAULT_SPARSE_CHAR_THRESHOLD;
-  const n = Number.parseInt(raw, 10);
+  if (isBlankEnv(raw)) return DEFAULT_SPARSE_CHAR_THRESHOLD;
+  const n = Number.parseInt(String(raw), 10);
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_SPARSE_CHAR_THRESHOLD;
 }
 
@@ -20,14 +22,14 @@ export function getSparseCharThreshold(): number {
  */
 export function getSparseMinAlphanumericRatio(): number | null {
   const raw = process.env.OCR_SPARSE_MIN_ALNUM_RATIO;
-  if (raw === undefined || raw.trim() === '') return DEFAULT_SPARSE_MIN_ALNUM_RATIO;
-  const n = Number.parseFloat(raw);
+  if (isBlankEnv(raw)) return DEFAULT_SPARSE_MIN_ALNUM_RATIO;
+  const n = Number.parseFloat(String(raw));
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.min(1, n);
 }
 
 export function nativePageAlphanumericRatio(pageText: string): number {
-  const t = pageText.trim();
+  const t = (pageText ?? '').trim();
   if (t.length === 0) return 0;
   const alnum = (t.match(/[a-zA-Z0-9]/g) ?? []).length;
   return alnum / t.length;
@@ -38,10 +40,10 @@ export function pageLooksSparseNative(
   thresholdChars = getSparseCharThreshold(),
   minAlnumRatio: number | null = getSparseMinAlphanumericRatio()
 ): boolean {
-  const t = pageText.trim();
+  const t = (pageText ?? '').trim();
   if (t.length < thresholdChars) return true;
   if (minAlnumRatio == null) return false;
-  return nativePageAlphanumericRatio(pageText) < minAlnumRatio;
+  return nativePageAlphanumericRatio(pageText ?? '') < minAlnumRatio;
 }
 
 /** @returns 1-based page indices where native text is considered sparse */
@@ -49,7 +51,7 @@ export function detectSparsePageIndices(pages: string[], thresholdChars = getSpa
   const minR = getSparseMinAlphanumericRatio();
   const sparse: number[] = [];
   for (let i = 0; i < pages.length; i++) {
-    if (pageLooksSparseNative(pages[i]!, thresholdChars, minR)) {
+    if (pageLooksSparseNative(pages[i] ?? '', thresholdChars, minR)) {
       sparse.push(i + 1);
     }
   }

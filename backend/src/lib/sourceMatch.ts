@@ -1,3 +1,5 @@
+import { safeTrim } from './stringUtils';
+
 /**
  * Whether an LLM-extracted title/name is supported by the raw PDF text.
  * Uses substring, compact (no-whitespace), and token-overlap matching so
@@ -34,9 +36,13 @@ function significantTokens(normalized: string): string[] {
     });
 }
 
-export function phraseSupportedBySource(phrase: string, rawText: string): boolean {
+export function phraseSupportedBySource(phrase: unknown, rawText: unknown): boolean {
+  if (typeof rawText !== 'string') return false;
+  const phraseStr = safeTrim(phrase);
+  if (!phraseStr) return false;
+
   const source = rawText.toLowerCase();
-  const normalized = phrase.toLowerCase().replace(/\s+/g, ' ').trim();
+  const normalized = phraseStr.toLowerCase().replace(/\s+/g, ' ').trim();
   if (!normalized) return false;
 
   if (source.includes(normalized)) return true;

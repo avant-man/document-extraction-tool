@@ -1,10 +1,12 @@
+import { isBlankEnv } from './stringUtils';
+
 /**
  * When native text is globally tiny (scan-only PDF), mark every page as an OCR candidate
  * so junk per-page length does not skip rasterization. Only applies when Tesseract is enabled.
  */
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const n = Number.parseInt(raw, 10);
+  if (isBlankEnv(raw)) return fallback;
+  const n = Number.parseInt(String(raw), 10);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
@@ -12,7 +14,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 export function sumNativeTrimmedLengths(pages: string[]): number {
   let s = 0;
   for (const p of pages) {
-    s += p.trim().length;
+    s += (p ?? '').trim().length;
   }
   return s;
 }

@@ -1,9 +1,15 @@
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { isBlankEnv } from '../lib/stringUtils';
+
+const nodeRequire = createRequire(__filename);
+
 const DEFAULT_RENDER_SCALE = 1.75;
 
 export function getPdfRenderScale(): number {
   const raw = process.env.OCR_RENDER_SCALE;
-  if (raw === undefined || raw.trim() === '') return DEFAULT_RENDER_SCALE;
-  const n = Number.parseFloat(raw);
+  if (isBlankEnv(raw)) return DEFAULT_RENDER_SCALE;
+  const n = Number.parseFloat(String(raw));
   return Number.isFinite(n) && n > 0 && n <= 4 ? n : DEFAULT_RENDER_SCALE;
 }
 
@@ -20,6 +26,14 @@ export async function renderPdfPageToPngBuffer(
 ): Promise<Buffer> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfjs: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  try {
+    const workerSrc = pathToFileURL(nodeRequire.resolve('pdfjs-dist/legacy/build/pdf.worker.mjs')).href;
+    if (pdfjs.GlobalWorkerOptions) {
+      pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
+    }
+  } catch {
+    /* leave default; worker may still resolve via bundler includeFiles */
+  }
   const loadingTask = pdfjs.getDocument({
     data: new Uint8Array(pdfBuffer),
     useSystemFonts: true,
