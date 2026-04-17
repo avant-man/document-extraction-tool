@@ -9,13 +9,15 @@ import type {
 } from '../types/extraction';
 import { logger } from '../lib/logger';
 
-function normKey(s: string): string {
+function normKey(s: string | null | undefined): string {
+  if (s == null || typeof s !== 'string') return '';
   return s.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function pickMergedSummary(partials: ExtractedReport[]): ExtractedReport['summary'] {
   for (const p of partials) {
-    const w = p.summary?.watershedName?.trim();
+    const raw = p.summary?.watershedName;
+    const w = typeof raw === 'string' ? raw.trim() : '';
     if (w) {
       return { ...p.summary };
     }
@@ -48,7 +50,8 @@ export function mergePartialExtractions(partials: ExtractedReport[]): ExtractedR
   const goalsMap = new Map<string, Goal>();
   for (const p of partials) {
     for (const g of p.goals ?? []) {
-      const key = (g.id?.trim() || normKey(g.title)) || '';
+      const idKey = typeof g.id === 'string' ? g.id.trim() : '';
+      const key = (idKey || normKey(g.title)) || '';
       if (!key) continue;
       const prev = goalsMap.get(key);
       if (prev && JSON.stringify(prev) !== JSON.stringify(g)) {
