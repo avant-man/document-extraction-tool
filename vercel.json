@@ -6,7 +6,7 @@
   "fluid": true,
   "functions": {
     "api/index.ts": {
-      "maxDuration": 600,
+      "maxDuration": 300,
       "includeFiles": "**/{pdfjs-dist,tesseract.js-core,@napi-rs/canvas}/**"
     }
   }
