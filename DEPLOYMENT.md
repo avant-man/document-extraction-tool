@@ -102,10 +102,7 @@ The project root `vercel.json` configures rewrites, the frontend build, output d
   "functions": {
     "api/index.ts": {
       "maxDuration": 300,
-      "includeFiles": [
-        "node_modules/tesseract.js-core/**/*.wasm",
-        "backend/node_modules/tesseract.js-core/**/*.wasm"
-      ]
+      "includeFiles": "**/tesseract.js-core/**/*.wasm"
     }
   }
 }
