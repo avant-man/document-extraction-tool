@@ -69,6 +69,14 @@ Connect the GitHub repository in the Vercel dashboard under **Settings → Git**
 
 After deploy, confirm async extraction is wired: **`GET https://<your-deployment>/api/health`** should return JSON with `asyncExtraction.ready: true`. If `ready` is `false`, open `asyncExtraction.missing` — add those variables in **Vercel → Settings → Environment Variables**, redeploy, and confirm the Inngest app is synced to the same deployment URL (Inngest dashboard → Apps → your app → sync / serve).
 
+### 4b. Verification checklist (Blob 403 / Inngest)
+
+Use this when jobs upload but **Inngest steps** or **`GET /api/extract/jobs/:id`** intermittently fail with Blob `403 Forbidden`:
+
+1. **Inngest sync URL** — In [Inngest](https://app.inngest.com) → your app → **Sync** (or environment URL), the base URL must be exactly the Vercel deployment that serves **`/api/inngest`** (for example `https://your-project.vercel.app`), not an old preview URL, not `localhost`, and not a different Vercel project. Inngest invokes that host for every pipeline step; a mismatched URL can point at an app missing or using the wrong env.
+2. **`BLOB_READ_WRITE_TOKEN` per environment** — In **Vercel → Settings → Environment Variables**, confirm `BLOB_READ_WRITE_TOKEN` is set for **Production** (and **Preview** if you use preview deployments). It must belong to the **same** Blob store the app writes to. After rotating the token in Vercel Storage, **redeploy** so running functions pick up the new value.
+3. **Health check** — `GET /api/health` → `asyncExtraction.ready: true` confirms both `BLOB_READ_WRITE_TOKEN` and `INNGEST_EVENT_KEY` are present (trimmed non-empty) in that deployment.
+
 ### 4a. Scan-only PDFs (OCR)
 
 Image-only or non-selectable PDFs need **server-side OCR**. Without it, native text is empty and extraction returns little or no structured data.
@@ -163,6 +171,10 @@ The first Inngest step fetches the PDF from `blobUrl` and deletes the source blo
 **`BLOB_READ_WRITE_TOKEN` errors / 401 responses from Blob**
 - Cause: the environment variable is missing from the Vercel project for the target environment (Production, Preview, or Development).
 - Fix: go to **Vercel dashboard → your project → Settings → Environment Variables** and confirm `BLOB_READ_WRITE_TOKEN` is present and assigned to the environment where the error occurs. Re-run `vercel env pull .env.local` locally if the issue is in local dev.
+
+**Intermittent `403 Forbidden` from Blob on `getJobState` / Inngest OCR steps**
+- Cause: often **pathname + token** reads on the Blob API edge, **Inngest hitting a deployment** whose token or store does not match where the job was created, or **throttling** after many sequential reads/writes.
+- Fix: follow **Section 4b** (sync URL + token + redeploy). The backend prefers **`head` + `get(publicUrl)`** for public job blobs (same idea as reading the uploaded PDF URL) and falls back to pathname + token. If 403 continues, check Vercel / Blob usage for rate limits and align **`@vercel/blob`** with the version in the repo lockfile or newer per [Vercel Blob changelog](https://github.com/vercel/storage/releases).
 
 **Frontend error “Async extraction is not configured” (503 on `POST /api/extract/jobs`)**
 - Cause: `BLOB_READ_WRITE_TOKEN` or `INNGEST_EVENT_KEY` missing in that environment.

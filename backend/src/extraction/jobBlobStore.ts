@@ -1,4 +1,5 @@
 import { del, get, head, list, put } from '@vercel/blob';
+import { logger } from '../lib/logger';
 import type { ExtractionJobState } from './types';
 
 const PREFIX = 'extraction-jobs';
@@ -24,18 +25,79 @@ function publicReadOpts(token: string) {
   return { access: 'public' as const, token };
 }
 
+/** Diagnostics for a single read attempt (logged if all retries exhaust). */
+type BlobReadAttemptDiag = {
+  headThrew: boolean;
+  headHadUrl: boolean;
+  publicUrlGetSucceeded: boolean;
+};
+
+/**
+ * Public job blobs: resolve URL via head(token), then get(url) without token (same pattern as
+ * fetchPdfBuffer). Falls back to get(pathname, { token }) for edge cases.
+ */
+async function readJobBlobBodyOnce(
+  pathname: string,
+  token: string,
+  diag: BlobReadAttemptDiag
+): Promise<Buffer> {
+  diag.headThrew = false;
+  diag.headHadUrl = false;
+  diag.publicUrlGetSucceeded = false;
+
+  try {
+    const meta = await head(pathname, { token });
+    diag.headHadUrl = !!meta?.url;
+    if (meta?.url) {
+      try {
+        const pub = await get(meta.url, { access: 'public' });
+        if (pub && pub.statusCode === 200 && pub.stream) {
+          diag.publicUrlGetSucceeded = true;
+          return streamToBuffer(pub.stream as ReadableStream<Uint8Array>);
+        }
+      } catch {
+        /* fall through to pathname+token get */
+      }
+    }
+  } catch {
+    diag.headThrew = true;
+  }
+
+  const res = await get(pathname, publicReadOpts(token));
+  if (!res || res.statusCode !== 200 || !res.stream) {
+    throw new Error(`blob get: status ${res?.statusCode ?? 'none'}`);
+  }
+  return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
+}
+
 /** Read by known pathname (avoids list() truncation missing state.json, etc.). */
 async function getBlobBodyUtf8(pathname: string, token: string): Promise<string | null> {
+  const diag: BlobReadAttemptDiag = {
+    headThrew: false,
+    headHadUrl: false,
+    publicUrlGetSucceeded: false
+  };
   for (let attempt = 1; attempt <= BLOB_GET_MAX_ATTEMPTS; attempt++) {
     try {
-      const res = await get(pathname, publicReadOpts(token));
-      if (!res || res.statusCode !== 200 || !res.stream) return null;
-      return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+      const buf = await readJobBlobBodyOnce(pathname, token, diag);
+      return buf.toString('utf8');
     } catch (err) {
       if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobError(err)) {
         await sleep(Math.min(2000, 150 * 2 ** (attempt - 1)));
         continue;
       }
+      logger.error(
+        'blob.job_read_exhausted',
+        err,
+        {
+          readKind: 'utf8',
+          pathnamePreview: pathname.length > 120 ? `${pathname.slice(0, 120)}…` : pathname,
+          attempts: BLOB_GET_MAX_ATTEMPTS,
+          headThrew: diag.headThrew,
+          headHadUrl: diag.headHadUrl,
+          publicUrlGetSucceeded: diag.publicUrlGetSucceeded
+        }
+      );
       throw err;
     }
   }
@@ -43,16 +105,31 @@ async function getBlobBodyUtf8(pathname: string, token: string): Promise<string 
 }
 
 async function getBlobBodyBuffer(pathname: string, token: string): Promise<Buffer | null> {
+  const diag: BlobReadAttemptDiag = {
+    headThrew: false,
+    headHadUrl: false,
+    publicUrlGetSucceeded: false
+  };
   for (let attempt = 1; attempt <= BLOB_GET_MAX_ATTEMPTS; attempt++) {
     try {
-      const res = await get(pathname, publicReadOpts(token));
-      if (!res || res.statusCode !== 200 || !res.stream) return null;
-      return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
+      return await readJobBlobBodyOnce(pathname, token, diag);
     } catch (err) {
       if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobError(err)) {
         await sleep(Math.min(2000, 150 * 2 ** (attempt - 1)));
         continue;
       }
+      logger.error(
+        'blob.job_read_exhausted',
+        err,
+        {
+          readKind: 'buffer',
+          pathnamePreview: pathname.length > 120 ? `${pathname.slice(0, 120)}…` : pathname,
+          attempts: BLOB_GET_MAX_ATTEMPTS,
+          headThrew: diag.headThrew,
+          headHadUrl: diag.headHadUrl,
+          publicUrlGetSucceeded: diag.publicUrlGetSucceeded
+        }
+      );
       throw err;
     }
   }
