@@ -66,7 +66,7 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 
 /** `none` skips OCR. `tesseract` runs Tesseract on sparse pages (see sparsePages + raster). */
 export function getOcrEngineKind(): OcrEngineKind {
-  const v = safeTrim(process.env.OCR_ENGINE ?? 'none').toLowerCase();
+  const v = safeTrim(process.env.OCR_ENGINE ?? 'tesseract').toLowerCase();
   if (v === 'tesseract') return 'tesseract';
   return 'none';
 }

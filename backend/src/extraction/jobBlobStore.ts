@@ -1,7 +1,24 @@
-import { del, get, list, put } from '@vercel/blob';
+import { del, get, head, list, put } from '@vercel/blob';
 import type { ExtractionJobState } from './types';
 
 const PREFIX = 'extraction-jobs';
+
+function publicReadOpts(token: string) {
+  return { access: 'public' as const, token, useCache: false as const };
+}
+
+/** Read by known pathname (avoids list() truncation missing state.json, etc.). */
+async function getBlobBodyUtf8(pathname: string, token: string): Promise<string | null> {
+  const res = await get(pathname, publicReadOpts(token));
+  if (!res || res.statusCode !== 200 || !res.stream) return null;
+  return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+}
+
+async function getBlobBodyBuffer(pathname: string, token: string): Promise<Buffer | null> {
+  const res = await get(pathname, publicReadOpts(token));
+  if (!res || res.statusCode !== 200 || !res.stream) return null;
+  return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
+}
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -76,12 +93,8 @@ export async function putJobState(jobId: string, state: ExtractionJobState): Pro
 export async function getJobState(jobId: string): Promise<ExtractionJobState | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const meta = blobs.find(b => b.pathname.endsWith('/state.json') || b.pathname.endsWith('state.json'));
-  if (!meta?.url) return null;
-  const res = await get(meta.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  const text = (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  const text = await getBlobBodyUtf8(jobStatePathname(jobId), token);
+  if (text == null) return null;
   return JSON.parse(text) as ExtractionJobState;
 }
 
@@ -95,12 +108,8 @@ export async function putJobPages(jobId: string, pages: string[]): Promise<void>
 export async function getJobPages(jobId: string): Promise<string[] | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const f = blobs.find(b => b.pathname.endsWith('/pages.json'));
-  if (!f?.url) return null;
-  const res = await get(f.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  const text = (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  const text = await getBlobBodyUtf8(jobPagesPathname(jobId), token);
+  if (text == null) return null;
   const data = JSON.parse(text) as { pages?: string[] };
   return data.pages ?? null;
 }
@@ -116,12 +125,7 @@ export async function putJobPdf(jobId: string, buffer: Buffer): Promise<string> 
 export async function getJobPdfBuffer(jobId: string): Promise<Buffer | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const f = blobs.find(b => b.pathname.endsWith('/source.pdf'));
-  if (!f?.url) return null;
-  const res = await get(f.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
+  return getBlobBodyBuffer(jobPdfPathname(jobId), token);
 }
 
 export async function putAnnotatedAndRegex(
@@ -141,23 +145,14 @@ export async function putAnnotatedAndRegex(
 export async function getAnnotatedText(jobId: string): Promise<string | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const f = blobs.find(b => b.pathname.endsWith('/annotated.txt'));
-  if (!f?.url) return null;
-  const res = await get(f.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  return getBlobBodyUtf8(jobAnnotatedPathname(jobId), token);
 }
 
 export async function getRegexNumericsMap(jobId: string): Promise<Map<string, number> | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const f = blobs.find(b => b.pathname.endsWith('/regexNumerics.json'));
-  if (!f?.url) return null;
-  const res = await get(f.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  const text = (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  const text = await getBlobBodyUtf8(jobRegexNumericsPathname(jobId), token);
+  if (text == null) return null;
   const data = JSON.parse(text) as { entries?: [string, number][] };
   if (!data.entries) return new Map();
   return new Map(data.entries);
@@ -173,24 +168,14 @@ export async function putPartialBatch(jobId: string, batchIndex: number, jsonStr
 export async function getPartialBatch(jobId: string, batchIndex: number): Promise<string | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const pathname = jobPartialPathname(jobId, batchIndex);
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/partials/`, token, limit: 100 });
-  const f = blobs.find(b => b.pathname === pathname || b.pathname.endsWith(`batch-${batchIndex}.json`));
-  if (!f?.url) return null;
-  const res = await get(f.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  return getBlobBodyUtf8(jobPartialPathname(jobId, batchIndex), token);
 }
 
 export async function getJobResultJson(jobId: string): Promise<unknown | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const f = blobs.find(b => b.pathname.endsWith('/result.json'));
-  if (!f?.url) return null;
-  const res = await get(f.url, { access: 'public', token });
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  const text = (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  const text = await getBlobBodyUtf8(jobResultPathname(jobId), token);
+  if (text == null) return null;
   return JSON.parse(text) as unknown;
 }
 
@@ -205,14 +190,11 @@ export async function putJobResult(jobId: string, body: unknown): Promise<string
 export async function deleteJobStateBlob(jobId: string): Promise<void> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return;
-  const { blobs } = await list({ prefix: `${PREFIX}/${jobId}/`, token, limit: 50 });
-  const meta = blobs.find(b => b.pathname.endsWith('/state.json') || b.pathname.endsWith('state.json'));
-  if (meta?.url) {
-    try {
-      await del(meta.url, { token });
-    } catch {
-      /* ignore */
-    }
+  try {
+    const meta = await head(jobStatePathname(jobId), { token });
+    if (meta?.url) await del(meta.url, { token });
+  } catch {
+    /* ignore */
   }
 }
 

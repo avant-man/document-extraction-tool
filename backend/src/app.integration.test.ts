@@ -50,7 +50,10 @@ const minimalReportJson = JSON.stringify({
 });
 
 describe('app (HTTP integration)', () => {
+  const originalOcrEngine = process.env.OCR_ENGINE;
+
   beforeEach(() => {
+    process.env.OCR_ENGINE = 'none';
     mocks.fetchPdfBuffer.mockReset();
     mocks.deleteBlobSafe.mockReset();
     mocks.extractTextFromBuffer.mockReset();
@@ -62,6 +65,11 @@ describe('app (HTTP integration)', () => {
     mocks.extractTextFromBuffer.mockResolvedValue('plain text');
     mocks.extractPagesFromBuffer.mockResolvedValue({ pages: ['plain text'], numPages: 1 });
     mocks.extractWithClaude.mockResolvedValue(minimalReportJson);
+  });
+
+  afterEach(() => {
+    if (originalOcrEngine === undefined) delete process.env.OCR_ENGINE;
+    else process.env.OCR_ENGINE = originalOcrEngine;
   });
 
   it('GET /api/health returns ok and asyncExtraction status', async () => {

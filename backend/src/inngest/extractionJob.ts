@@ -37,8 +37,18 @@ export const extractionPipelineJob = inngest.createFunction(
       const plan = await step.run('annotate-plan', async () => extractionJobAnnotateAndPlan(jobId));
 
       if (plan.useBatchedExtraction) {
+        const batches = plan.batches;
+        if (!batches?.length) {
+          throw new Error('annotate-plan returned batched mode without batches array');
+        }
         for (let i = 0; i < plan.batchCount; i++) {
-          await step.run(`claude-batch-${i}`, async () => extractionJobClaudeBatchPart(jobId, i));
+          const pageNums = batches[i];
+          if (!pageNums?.length) {
+            throw new Error(`annotate-plan batch ${i} has no pages`);
+          }
+          await step.run(`claude-batch-${i}`, async () =>
+            extractionJobClaudeBatchPart(jobId, i, { pageNums, totalBatches: batches.length })
+          );
         }
       } else {
         await step.run('claude-single', async () => extractionJobClaudeSingle(jobId));

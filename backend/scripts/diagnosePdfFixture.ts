@@ -2,7 +2,7 @@
  * Read a PDF from disk and log native text stats, sparse indices, and optional OCR (respects env).
  * Usage (from repo root or backend):
  *   npx ts-node scripts/diagnosePdfFixture.ts [path/to.pdf]
- * Env: PDF_DIAGNOSE_PATH fallback; OCR_ENGINE=tesseract to exercise raster+Tesseract (slow).
+ * Env: PDF_DIAGNOSE_PATH fallback; OCR_ENGINE=none skips raster+Tesseract (default is tesseract).
  */
 import fs from 'fs';
 import path from 'path';
@@ -29,7 +29,7 @@ async function main() {
   const buffer = fs.readFileSync(pdfPath);
   console.log('PDF:', pdfPath);
   console.log('Bytes:', buffer.length);
-  console.log('OCR_ENGINE:', process.env.OCR_ENGINE ?? '(unset → none)');
+  console.log('OCR_ENGINE:', process.env.OCR_ENGINE ?? '(unset → tesseract)');
 
   const { extractPagesFromBuffer } = await import('../src/services/pdfService');
   const { detectSparsePageIndices } = await import('../src/lib/sparsePages');

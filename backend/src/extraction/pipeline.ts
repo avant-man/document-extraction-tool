@@ -311,6 +311,14 @@ export async function extractionJobOcrChunk(jobId: string, chunkIndex: number): 
 export type AnnotatePlanResult = {
   useBatchedExtraction: boolean;
   batchCount: number;
+  /** Set when useBatchedExtraction; Inngest passes each slice into batch steps so execution does not depend on re-reading state.batches. */
+  batches?: number[][];
+};
+
+/** Page numbers for this batch + total count (from memoized annotate-plan step). */
+export type ClaudeBatchPlanSlice = {
+  pageNums: number[];
+  totalBatches: number;
 };
 
 export async function extractionJobAnnotateAndPlan(jobId: string): Promise<AnnotatePlanResult> {
@@ -374,13 +382,18 @@ export async function extractionJobAnnotateAndPlan(jobId: string): Promise<Annot
     claudeBatchCurrent: 0
   });
 
-  return { useBatchedExtraction: true, batchCount: batches.length };
+  return { useBatchedExtraction: true, batchCount: batches.length, batches };
 }
 
 export async function extractionJobClaudeSingle(jobId: string): Promise<void> {
   const annotatedText = await jobBlob.getAnnotatedText(jobId);
   const state = await jobBlob.getJobState(jobId);
-  if (!annotatedText || !state) throw new Error('annotated text or state missing');
+  if (annotatedText == null || annotatedText === '') {
+    throw new Error('annotated text missing for Claude single extraction');
+  }
+  if (!state) {
+    throw new Error('job state missing for Claude single extraction');
+  }
 
   const pages = await jobBlob.getJobPages(jobId);
   const pageCount = pages?.length ?? state.pageCount ?? 0;
@@ -393,7 +406,7 @@ export async function extractionJobClaudeSingle(jobId: string): Promise<void> {
   const rawJson = await extractWithClaude(annotatedText, {
     estimatedInputTokens,
     pageCount,
-    ocrEngine: (state.ocrEngine as 'none' | 'tesseract') ?? 'none',
+    ocrEngine: (state.ocrEngine as 'none' | 'tesseract') ?? 'tesseract',
     ocrAppliedToPages: state.ocrAppliedToPages,
     sparsePageIndices: state.sparsePageIndices
   });
@@ -402,15 +415,39 @@ export async function extractionJobClaudeSingle(jobId: string): Promise<void> {
   await patchJobState(jobId, { claudeBatchCurrent: 1 });
 }
 
-export async function extractionJobClaudeBatchPart(jobId: string, batchIndex: number): Promise<void> {
+export async function extractionJobClaudeBatchPart(
+  jobId: string,
+  batchIndex: number,
+  planSlice?: ClaudeBatchPlanSlice
+): Promise<void> {
   const annotatedText = await jobBlob.getAnnotatedText(jobId);
   const state = await jobBlob.getJobState(jobId);
-  if (!annotatedText || !state?.batches?.length) throw new Error('state or batches missing');
+
+  if (annotatedText == null || annotatedText === '') {
+    throw new Error('annotated text missing for Claude batch');
+  }
+  if (!state) {
+    throw new Error('job state missing for Claude batch');
+  }
+
+  const pageNums =
+    planSlice != null && planSlice.pageNums.length > 0 ? planSlice.pageNums : state.batches?.[batchIndex];
+  const totalBatches =
+    planSlice != null && planSlice.totalBatches > 0
+      ? planSlice.totalBatches
+      : state.batches?.length ?? 0;
+
+  if (!pageNums?.length) {
+    if (planSlice != null) {
+      throw new Error('annotate-plan slice had no page numbers for this Claude batch');
+    }
+    throw new Error('batches missing in persisted job state');
+  }
+  if (totalBatches < 1) {
+    throw new Error('invalid Claude batch count');
+  }
 
   const pageSlices = splitAnnotatedDocumentByPages(annotatedText);
-  const batches = state.batches;
-  const pageNums = batches[batchIndex];
-  if (!pageNums) throw new Error(`batch ${batchIndex} missing`);
 
   const body = joinAnnotatedPagesForBatch(pageSlices, pageNums);
   const startP = Math.min(...pageNums);
@@ -423,16 +460,16 @@ export async function extractionJobClaudeBatchPart(jobId: string, batchIndex: nu
     {
       estimatedInputTokens: estBatch,
       pageCount,
-      ocrEngine: (state.ocrEngine as 'none' | 'tesseract') ?? 'none',
+      ocrEngine: (state.ocrEngine as 'none' | 'tesseract') ?? 'tesseract',
       ocrAppliedToPages: state.ocrAppliedToPages,
       sparsePageIndices: state.sparsePageIndices,
       batchIndex,
-      totalBatches: batches.length,
+      totalBatches,
       batchedExtraction: true
     },
     {
       batchIndex,
-      totalBatches: batches.length,
+      totalBatches,
       startPage: startP,
       endPage: endP,
       isFirstBatch: batchIndex === 0
@@ -476,7 +513,7 @@ export async function extractionJobMergeAndValidate(jobId: string): Promise<void
   const extractionWarnings = buildExtractionWarnings({
     nativeTotalTrimmedChars: state.nativeTotalTrimmedChars ?? 0,
     annotatedChars: annotatedLen,
-    ocrEngine: (state.ocrEngine as 'none' | 'tesseract') ?? 'none',
+    ocrEngine: (state.ocrEngine as 'none' | 'tesseract') ?? 'tesseract',
     ocrAppliedToPages: state.ocrAppliedToPages ?? [],
     autoGlobalSparseApplied: state.autoGlobalSparseApplied ?? false
   });

@@ -75,7 +75,7 @@ Image-only or non-selectable PDFs need **server-side OCR**. Without it, native t
 
 | Variable | Example value | Purpose |
 |---|---|---|
-| `OCR_ENGINE` | `tesseract` | **`none` is the default in code** — OCR is skipped. Set to `tesseract` in Production and Preview (and local `.env.local`) for scan plans. |
+| `OCR_ENGINE` | `tesseract` | **Default in code is `tesseract`.** Set `OCR_ENGINE=none` to skip OCR. Override in Vercel only if you need that behavior in deploy. |
 | `OCR_SPARSE_CHAR_THRESHOLD` | `80` | Page is an OCR candidate when native trimmed length is below this (or fails the alphanumeric ratio below). |
 | `OCR_SPARSE_MIN_ALNUM_RATIO` | `0.12` | Set `0` or empty to disable. Long junk native layers with ratio below this still count as sparse. |
 | `AUTO_OCR_NATIVE_TOTAL_CHARS_THRESHOLD` | `500` | When **total** native characters across the whole PDF is below this and `OCR_ENGINE=tesseract`, **all** pages are treated as OCR candidates (still capped by `OCR_MAX_PAGES`). |
@@ -188,6 +188,6 @@ The first Inngest step fetches the PDF from `blobUrl` and deletes the source blo
 - Fix: on Vercel, do not set `VITE_API_BASE_URL` at all — the frontend and API share the same origin, so relative `/api/*` paths resolve correctly. Only set it locally when running the Vite dev server against a separately running Express dev server.
 
 **Scan PDF / “no results” after extraction**
-- Cause: `OCR_ENGINE` defaults to `none`, so image-only pages never get Tesseract text; the model sees almost nothing and the validator drops unsupported names.
-- Fix: set `OCR_ENGINE=tesseract` on the server (see §4a), redeploy, and re-upload. Check server logs for `extract.stage` (`nativeTotalTrimmedChars`, `ocrAppliedToPages`) or run `npm run diagnose:pdf` from `backend/`.
+- Cause: `OCR_ENGINE=none` (or unset in an environment that does not load defaults), so image-only pages never get Tesseract text; the model sees almost nothing and the validator drops unsupported names.
+- Fix: remove `OCR_ENGINE=none` or set `OCR_ENGINE=tesseract`, redeploy, and re-upload. Check server logs for `extract.stage` (`nativeTotalTrimmedChars`, `ocrAppliedToPages`) or run `npm run diagnose:pdf` from `backend/`.
 - The API may return `extractionWarnings` (e.g. `ocr_disabled_low_native_text`); the dashboard shows these above the report when present.
