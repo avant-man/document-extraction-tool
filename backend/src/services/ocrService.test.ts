@@ -6,12 +6,13 @@ describe('getTesseractWorkerCreateOptions', () => {
     vi.unstubAllEnvs();
   });
 
-  it('returns CDN paths on Vercel', () => {
+  it('returns local worker script and CDN core on Vercel', () => {
     vi.stubEnv('VERCEL', '1');
     vi.stubEnv('TESSERACT_DISABLE_CDN', '');
     const o = getTesseractWorkerCreateOptions();
     expect(o?.corePath).toContain('tesseract.js-core@5.1.1');
-    expect(o?.workerPath).toContain('tesseract.js@5.1.1');
+    expect(o?.workerPath).toContain('worker-script');
+    expect(o?.workerPath).not.toMatch(/^https?:\/\//);
   });
 
   it('returns undefined locally when no flags', () => {

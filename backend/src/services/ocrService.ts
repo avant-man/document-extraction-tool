@@ -1,28 +1,43 @@
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { logger } from '../lib/logger';
 import { getSparseCharThreshold } from '../lib/sparsePages';
 import { tryRenderPdfPageToPngBuffer, getPdfRenderScale } from './pdfRasterService';
 
-/** Keep in sync with backend `package.json` tesseract.js version (WASM URLs on CDN). */
-const TESSERACT_JS_PKG_VERSION = '5.1.1';
+/** Keep in sync with backend `package.json` tesseract.js-core version (WASM base URL on CDN). */
+const TESSERACT_JS_CORE_PKG_VERSION = '5.1.1';
 
 export type TesseractWorkerCreateOptions = {
+  /** Must be a filesystem path in Node (Worker threads); never an https URL. */
   workerPath: string;
+  /** WASM engine files; https CDN is OK and avoids missing `.wasm` in serverless bundles. */
   corePath: string;
 };
 
+function resolveNodeTesseractWorkerScript(): string {
+  const require = createRequire(__filename);
+  try {
+    return require.resolve('tesseract.js/src/worker-script/node/index.js');
+  } catch {
+    const pkgJson = require.resolve('tesseract.js/package.json');
+    return path.join(path.dirname(pkgJson), 'src/worker-script/node/index.js');
+  }
+}
+
 /**
  * Vercel/serverless bundles often ship `tesseract.js-core` `.js` without sibling `.wasm` files,
- * which causes ENOENT at runtime. jsDelivr serves the full package including WASM.
+ * which causes ENOENT at runtime. Pointing `corePath` at jsDelivr fixes WASM loading.
+ * Node still requires a **local** `workerPath` (see tesseract.js FAQ for worker threads).
  *
- * Set `TESSERACT_USE_CDN=1` on other hosts with the same bundling issue.
- * Set `TESSERACT_DISABLE_CDN=1` to force local `node_modules` paths (offline / custom layouts).
+ * Set `TESSERACT_USE_CDN=1` on other hosts with the same WASM bundling issue.
+ * Set `TESSERACT_DISABLE_CDN=1` to force default local `node_modules` layout only.
  */
 export function getTesseractWorkerCreateOptions(): TesseractWorkerCreateOptions | undefined {
   if (process.env.TESSERACT_DISABLE_CDN === '1') return undefined;
   if (process.env.VERCEL === '1' || process.env.TESSERACT_USE_CDN === '1') {
-    const v = TESSERACT_JS_PKG_VERSION;
+    const v = TESSERACT_JS_CORE_PKG_VERSION;
     return {
-      workerPath: `https://cdn.jsdelivr.net/npm/tesseract.js@${v}/dist/worker.min.js`,
+      workerPath: resolveNodeTesseractWorkerScript(),
       corePath: `https://cdn.jsdelivr.net/npm/tesseract.js-core@${v}`
     };
   }
