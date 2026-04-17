@@ -1,7 +1,22 @@
 import * as d3 from 'd3';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { chartColors } from '../../lib/chartTheme';
+import { axisMuted, chartColors } from '../../lib/chartTheme';
 import type { Goal } from '../../types/extraction';
+
+const GRID_STROKE = '#e5e7eb';
+const AXIS_STROKE = '#d1d5db';
+const BAR_RX = 4;
+
+/** Integer tick positions for count data — avoids duplicate labels from fractional ticks. */
+function yTickValues(maxCount: number): number[] {
+  const hi = Math.max(1, Math.ceil(maxCount));
+  if (hi <= 12) return d3.range(0, hi + 1);
+  const step = Math.ceil(hi / 8);
+  const out: number[] = [];
+  for (let v = 0; v < hi; v += step) out.push(v);
+  if (out[out.length - 1] !== hi) out.push(hi);
+  return out;
+}
 
 interface GoalsBarChartProps {
   goals: Goal[];
@@ -41,7 +56,9 @@ export default function GoalsBarChart({ goals, height }: GoalsBarChartProps) {
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove();
 
-    const margin = { top: 28, right: 24, bottom: 60, left: 52 };
+    const maxLabelLen = Math.max(...chartData.map(d => d.category.length), 4);
+    const rotateX = maxLabelLen > 14;
+    const margin = { top: 28, right: 24, bottom: rotateX ? 56 : 40, left: 52 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
@@ -50,24 +67,38 @@ export default function GoalsBarChart({ goals, height }: GoalsBarChartProps) {
     const xScale = d3.scaleBand()
       .domain(chartData.map(d => d.category))
       .range([0, innerWidth])
-      .padding(0.2);
+      .padding(0.22);
 
     const subScale = d3.scaleBand()
       .domain(['target', 'achieved'])
       .range([0, xScale.bandwidth()])
-      .padding(0.05);
+      .padding(0.12);
 
     const maxVal = Math.max(
       d3.max(chartData, d => d.target) ?? 0,
       d3.max(chartData, d => d.achieved) ?? 0,
       1
     );
+    const yHi = Math.max(1, Math.ceil(maxVal));
     const yScale = d3.scaleLinear()
-      .domain([0, maxVal])
-      .range([innerHeight, 0])
-      .nice();
+      .domain([0, yHi])
+      .range([innerHeight, 0]);
 
-    const tickCount = Math.min(8, Math.max(2, maxVal + 1));
+    const ticks = yTickValues(maxVal);
+
+    // Horizontal grid (behind bars)
+    g.append('g')
+      .attr('class', 'grid-y')
+      .call(
+        d3.axisLeft(yScale)
+          .tickValues(ticks)
+          .tickSize(-innerWidth)
+          .tickFormat(() => '')
+      )
+      .call(g => g.select('.domain').remove())
+      .selectAll('line')
+      .attr('stroke', GRID_STROKE)
+      .attr('stroke-dasharray', '4 4');
 
     // Target bars
     g.selectAll('.bar-target')
@@ -77,7 +108,9 @@ export default function GoalsBarChart({ goals, height }: GoalsBarChartProps) {
       .attr('x', d => (xScale(d.category) ?? 0) + (subScale('target') ?? 0))
       .attr('y', d => yScale(d.target))
       .attr('width', subScale.bandwidth())
-      .attr('height', d => innerHeight - yScale(d.target))
+      .attr('height', d => Math.max(0, innerHeight - yScale(d.target)))
+      .attr('rx', BAR_RX)
+      .attr('ry', BAR_RX)
       .attr('fill', chartColors.target);
 
     // Achieved bars
@@ -88,45 +121,62 @@ export default function GoalsBarChart({ goals, height }: GoalsBarChartProps) {
       .attr('x', d => (xScale(d.category) ?? 0) + (subScale('achieved') ?? 0))
       .attr('y', d => yScale(d.achieved))
       .attr('width', subScale.bandwidth())
-      .attr('height', d => innerHeight - yScale(d.achieved))
+      .attr('height', d => Math.max(0, innerHeight - yScale(d.achieved)))
+      .attr('rx', BAR_RX)
+      .attr('ry', BAR_RX)
       .attr('fill', chartColors.achieved);
 
-    const labelY = (v: number) => (v > 0 ? yScale(v) - 5 : innerHeight - 8);
+    const labelY = (v: number) => (v > 0 ? yScale(v) - 6 : innerHeight);
 
     g.selectAll('.label-target')
-      .data(chartData)
+      .data(chartData.filter(d => d.target > 0))
       .join('text')
       .attr('class', 'label-target')
       .attr('x', d => (xScale(d.category) ?? 0) + (subScale('target') ?? 0) + subScale.bandwidth() / 2)
       .attr('y', d => labelY(d.target))
       .attr('text-anchor', 'middle')
-      .style('font-size', '11px')
-      .style('fill', '#374151')
+      .style('font-size', '12px')
+      .style('font-weight', '600')
+      .style('fill', '#1f2937')
       .text(d => String(d.target));
 
     g.selectAll('.label-achieved')
-      .data(chartData)
+      .data(chartData.filter(d => d.achieved > 0))
       .join('text')
       .attr('class', 'label-achieved')
       .attr('x', d => (xScale(d.category) ?? 0) + (subScale('achieved') ?? 0) + subScale.bandwidth() / 2)
       .attr('y', d => labelY(d.achieved))
       .attr('text-anchor', 'middle')
-      .style('font-size', '11px')
-      .style('fill', '#374151')
+      .style('font-size', '12px')
+      .style('font-weight', '600')
+      .style('fill', '#1f2937')
       .text(d => String(d.achieved));
 
-    g.append('g')
+    const xAxis = g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
-      .call(d3.axisBottom(xScale).tickSize(0))
-      .selectAll('text')
-      .attr('transform', 'rotate(-45)')
-      .style('text-anchor', 'end')
-      .attr('dx', '-0.5em')
-      .attr('dy', '0.1em');
+      .call(d3.axisBottom(xScale).tickSizeOuter(0));
 
-    g.append('g').call(
-      d3.axisLeft(yScale).ticks(tickCount).tickFormat(d3.format('d'))
+    xAxis.selectAll('text')
+      .style('font-size', '12px')
+      .style('fill', axisMuted)
+      .attr('transform', rotateX ? 'rotate(-40)' : null)
+      .style('text-anchor', rotateX ? 'end' : 'middle')
+      .attr('dx', rotateX ? '-0.4em' : '0')
+      .attr('dy', rotateX ? '0.15em' : '0.85em');
+
+    xAxis.select('.domain').attr('stroke', AXIS_STROKE);
+
+    const yAxis = g.append('g').call(
+      d3.axisLeft(yScale)
+        .tickValues(ticks)
+        .tickFormat(d3.format('d'))
+        .tickSizeOuter(0)
     );
+    yAxis.selectAll('text')
+      .style('font-size', '12px')
+      .style('fill', axisMuted);
+    yAxis.select('.domain').attr('stroke', AXIS_STROKE);
+    yAxis.selectAll('.tick line').attr('stroke', AXIS_STROKE);
 
     g.append('text')
       .attr('transform', 'rotate(-90)')
@@ -134,7 +184,7 @@ export default function GoalsBarChart({ goals, height }: GoalsBarChartProps) {
       .attr('x', -innerHeight / 2)
       .attr('text-anchor', 'middle')
       .style('font-size', '12px')
-      .style('fill', '#6b7280')
+      .style('fill', axisMuted)
       .text('Number of Goals');
 
   }, [chartData, width, height]);
