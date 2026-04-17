@@ -32,9 +32,18 @@ function resolveNodeTesseractWorkerScript(): string {
  * Set `TESSERACT_USE_CDN=1` on other hosts with the same WASM bundling issue.
  * Set `TESSERACT_DISABLE_CDN=1` to force default local `node_modules` layout only.
  */
+function shouldLoadTesseractCoreFromCdn(): boolean {
+  if (process.env.TESSERACT_USE_CDN === '1') return true;
+  const vercel = process.env.VERCEL;
+  if (vercel !== undefined && vercel !== '') return true;
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (vercelEnv !== undefined && vercelEnv !== '') return true;
+  return false;
+}
+
 export function getTesseractWorkerCreateOptions(): TesseractWorkerCreateOptions | undefined {
   if (process.env.TESSERACT_DISABLE_CDN === '1') return undefined;
-  if (process.env.VERCEL === '1' || process.env.TESSERACT_USE_CDN === '1') {
+  if (shouldLoadTesseractCoreFromCdn()) {
     const v = TESSERACT_JS_CORE_PKG_VERSION;
     return {
       workerPath: resolveNodeTesseractWorkerScript(),

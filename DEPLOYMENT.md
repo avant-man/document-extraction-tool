@@ -77,6 +77,8 @@ Image-only or non-selectable PDFs need **server-side OCR**. Without it, native t
 | `AUTO_OCR_NATIVE_TOTAL_CHARS_THRESHOLD` | `500` | When **total** native characters across the whole PDF is below this and `OCR_ENGINE=tesseract`, **all** pages are treated as OCR candidates (still capped by `OCR_MAX_PAGES`). |
 | `OCR_RENDER_SCALE` | `1.75` | Raster scale for pdf.js → PNG; max `4`. Increase slightly if OCR is unreadable. |
 | `OCR_MAX_PAGES` | `60` | Max sparse pages OCR’d per request; raise (e.g. `120`) only if function time and memory allow. |
+| `TESSERACT_USE_CDN` | `1` | **Optional override:** forces Tesseract’s WASM `corePath` to jsDelivr. Use if you see `ENOENT` on `tesseract-core-*.wasm` in logs and CDN auto-detection did not run (for example, an unusual host). On Vercel, the app already prefers CDN when `VERCEL` or `VERCEL_ENV` is set, unless disabled below. |
+| `TESSERACT_DISABLE_CDN` | `1` | **Opt-out:** forces local `node_modules` WASM only. On Vercel, pair with `vercel.json` `includeFiles` for `tesseract.js-core` or OCR will fail when the bundle omits `.wasm` files. |
 
 **Local:** after `vercel env pull .env.local`, append the OCR lines from the project root `.env.example` (uncomment `OCR_ENGINE=tesseract` and adjust as needed), then restart the backend dev server.
 
@@ -90,7 +92,7 @@ These variables are also documented in `.env.example` at the project root. **Nev
 
 ## 5. Vercel Configuration (`vercel.json`)
 
-The project root `vercel.json` configures rewrites, the frontend build, output directory, and API **function duration** (60s for OCR / large PDFs):
+The project root `vercel.json` configures rewrites, the frontend build, output directory, API **function duration** (300s for large PDFs + OCR + Claude), and **extra files** for Tesseract’s WASM binaries (Node file tracing often ships `.js` without sibling `.wasm`):
 
 ```json
 {
@@ -99,7 +101,11 @@ The project root `vercel.json` configures rewrites, the frontend build, output d
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.ts": {
-      "maxDuration": 60
+      "maxDuration": 300,
+      "includeFiles": [
+        "node_modules/tesseract.js-core/**/*.wasm",
+        "backend/node_modules/tesseract.js-core/**/*.wasm"
+      ]
     }
   }
 }
@@ -108,6 +114,7 @@ The project root `vercel.json` configures rewrites, the frontend build, output d
 - **`rewrites`** — routes every request matching `/api/:path*` to the single serverless entry point at `/api/index`. This means the Express router in `backend/src/app.ts` handles all sub-routing (`/api/extract`, `/api/health`, etc.) without Vercel needing to know about individual routes.
 - **`buildCommand`** — runs only the Vite frontend build (`cd frontend && npm run build`). The backend is not built separately; it is bundled by Vercel when it processes `api/index.ts`.
 - **`outputDirectory`** — tells Vercel to serve `frontend/dist` as the static asset root. Vite writes its production output there.
+- **`includeFiles`** — copies `tesseract.js-core` `.wasm` files into the function bundle so `TESSERACT_DISABLE_CDN=1` (local WASM) can still work; when CDN mode is on (default on Vercel), WASM is loaded from jsDelivr instead.
 
 ---
 
@@ -124,7 +131,7 @@ Vercel detects any file under `api/` that exports a default value and wraps it i
 
 All requests to `/api/*` are handled here; Express's own router dispatches to the correct handler (`/api/extract` for PDF processing, `/api/health` for the health check).
 
-**Function timeout** — The repo `vercel.json` already sets `maxDuration: 60` for `api/index.ts`. If you still see timeouts with **OCR** on very long plans, reduce `OCR_MAX_PAGES` or `OCR_RENDER_SCALE`, or raise `maxDuration` if your plan supports it.
+**Function timeout** — The repo `vercel.json` sets `maxDuration: 300` for `api/index.ts`. If you still hit the wall with **OCR** on very long plans, reduce `OCR_MAX_PAGES` or `OCR_RENDER_SCALE`, or raise `maxDuration` further only if your Vercel plan allows it. A stuck Tesseract init (for example missing WASM before this fix) can also burn the full budget; check logs for `ENOENT` on `*.wasm` first.
 
 **Memory** — Raster + Tesseract increases memory use. If the function OOMs, lower `OCR_RENDER_SCALE` or `OCR_MAX_PAGES` before raising allocated memory.
 
@@ -155,8 +162,12 @@ Because blobs are deleted right after processing, Blob storage stays near-zero b
 - Fix: go to **Vercel dashboard → your project → Settings → Environment Variables** and confirm `BLOB_READ_WRITE_TOKEN` is present and assigned to the environment where the error occurs. Re-run `vercel env pull .env.local` locally if the issue is in local dev.
 
 **Function timeout (504 errors)**
-- Cause: a long PDF takes more than 10 seconds for pdf-parse + Claude to process.
-- Fix: add `maxDuration: 60` to the `functions` config in `vercel.json` as shown in Section 6.
+- Cause: a long PDF plus OCR and Claude exceeds the serverless time limit, or Tesseract failed to load WASM and the request hung until `maxDuration`.
+- Fix: confirm `maxDuration` in `vercel.json` (see Section 5). For OCR-heavy runs, lower `OCR_MAX_PAGES` / `OCR_RENDER_SCALE`. **Immediate WASM unblock:** set `TESSERACT_USE_CDN=1` in Vercel env and redeploy if logs show `ENOENT` on `tesseract-core-*.wasm`; ensure `TESSERACT_DISABLE_CDN` is not `1` unless you intend local WASM with `includeFiles` present.
+
+**Tesseract / `ENOENT: tesseract-core-*.wasm`**
+- Cause: the serverless bundle included `tesseract.js-core` JavaScript but not the sibling `.wasm` files, and Tesseract was not using the jsDelivr `corePath`.
+- Fix: redeploy with current `vercel.json` (`includeFiles` for `*.wasm`) and backend logic that enables CDN on Vercel (`VERCEL` / `VERCEL_ENV`) or set `TESSERACT_USE_CDN=1`. Do not set `TESSERACT_DISABLE_CDN=1` on Vercel unless you rely on bundled WASM only.
 
 **413 Payload Too Large**
 - Cause: `express.json({ limit: '1mb' })` in `backend/src/app.ts`. The standard upload flow sends only a short `blobUrl` string and will not hit this limit, but any client posting a large JSON body directly will.
