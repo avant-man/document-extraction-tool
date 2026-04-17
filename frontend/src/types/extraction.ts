@@ -101,4 +101,6 @@ export type ExtractionJobPollResponse = {
   };
   result: ExtractionApiResponse | null;
   error?: string | null;
+  /** Present on 503 responses when the client should retry polling. */
+  retryable?: boolean;
 };

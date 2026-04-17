@@ -28,9 +28,9 @@ function computeProgress(state: ExtractionJobState): JobProgress {
   };
 }
 
-router.post('/extract/jobs', (req, res) => {
+router.post('/extract/jobs', (req, res, next) => {
   const correlationId = randomUUID();
-  return runWithRequestContext(correlationId, async () => {
+  runWithRequestContext(correlationId, async () => {
     const { blobUrl, filename } = req.body as { blobUrl?: string; filename?: string };
 
     if (!blobUrl || typeof blobUrl !== 'string') {
@@ -89,57 +89,115 @@ router.post('/extract/jobs', (req, res) => {
     });
 
     return res.status(202).json({ jobId });
-  });
+  }).catch(next);
 });
 
-router.get('/extract/jobs/:jobId', (req, res) => {
+router.get('/extract/jobs/:jobId', (req, res, next) => {
   const correlationId = randomUUID();
-  return runWithRequestContext(correlationId, async () => {
+  runWithRequestContext(correlationId, async () => {
     const { jobId } = req.params;
     if (!jobId || typeof jobId !== 'string') {
-      return res.status(400).json({ error: 'jobId required' });
+      res.status(400).json({ error: 'jobId required' });
+      return;
     }
 
-    const state = await getJobState(jobId);
-    if (!state) {
-      return res.status(404).json({ error: 'Job not found' });
-    }
-
-    const progress = computeProgress(state);
-
-    if (state.status === 'failed') {
-      return res.status(200).json({
-        jobId,
-        status: 'failed',
-        stage: 'failed',
-        progress,
-        error: state.error ?? 'Extraction failed',
-        result: null
-      });
-    }
-
-    if (state.status === 'completed' && state.stage === 'done') {
-      const raw = await getJobResultJson(jobId);
-      if (raw == null) {
-        return res.status(500).json({ error: 'Job completed but result missing' });
+    try {
+      let state: ExtractionJobState | null;
+      try {
+        state = await getJobState(jobId);
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          logger.error('extract.jobs.job_state_corrupt', err, { jobId });
+          res.status(500).json({ error: 'Invalid job state data' });
+          return;
+        }
+        logger.error('extract.jobs.get_state_failed', err, { jobId });
+        res.status(503).json({
+          error: 'Temporary failure reading job status.',
+          retryable: true
+        });
+        return;
       }
-      return res.status(200).json({
-        jobId,
-        status: 'completed',
-        stage: 'done',
-        progress,
-        result: raw
-      });
-    }
 
-    return res.status(200).json({
-      jobId,
-      status: state.status,
-      stage: state.stage,
-      progress,
-      result: null,
-      error: null
-    });
+      if (!state) {
+        res.status(404).json({ error: 'Job not found' });
+        return;
+      }
+
+      const progress = computeProgress(state);
+
+      if (state.status === 'failed') {
+        res.status(200).json({
+          jobId,
+          status: 'failed',
+          stage: 'failed',
+          progress,
+          error: state.error ?? 'Extraction failed',
+          result: null
+        });
+        return;
+      }
+
+      if (state.status === 'completed' && state.stage === 'done') {
+        let raw: unknown | null;
+        try {
+          raw = await getJobResultJson(jobId);
+        } catch (err) {
+          logger.error('extract.jobs.get_result_failed', err, { jobId });
+          res.status(503).json({
+            error: 'Temporary failure reading job result.',
+            retryable: true
+          });
+          return;
+        }
+        if (raw == null) {
+          res.status(500).json({ error: 'Job completed but result missing' });
+          return;
+        }
+        res.status(200).json({
+          jobId,
+          status: 'completed',
+          stage: 'done',
+          progress,
+          result: raw
+        });
+        return;
+      }
+
+      res.status(200).json({
+        jobId,
+        status: state.status,
+        stage: state.stage,
+        progress,
+        result: null,
+        error: null
+      });
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        logger.error('extract.jobs.job_state_parse_failed', err, { jobId });
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Invalid job state data' });
+        }
+        return;
+      }
+      logger.error('extract.jobs.poll_unexpected', err, { jobId });
+      if (!res.headersSent) {
+        res.status(503).json({
+          error: 'Unexpected error loading job.',
+          retryable: true
+        });
+      }
+    }
+  }).catch(err => {
+    logger.error('extract.jobs.poll_rejected', err, { jobId: req.params.jobId });
+    if (!res.headersSent) {
+      res.status(503).json({
+        error: 'Temporary failure loading job.',
+        retryable: true
+      });
+    } else {
+      next(err);
+    }
   });
 });
 

@@ -6,6 +6,11 @@ import type {
   ExtractionWarning
 } from '../types/extraction';
 
+const POLL_MS = import.meta.env.MODE === 'test' ? 0 : 2000;
+const MAX_CONSECUTIVE_TRANSIENT_POLLS = 25;
+
+const POLL_FETCH_INIT: RequestInit = { cache: 'no-store' };
+
 function logExtractionWarnings(warnings: ExtractionWarning[]): void {
   if (warnings.length === 0) return;
   console.groupCollapsed(`[extraction] Extraction notices (${warnings.length})`);
@@ -26,9 +31,8 @@ interface ExtractionState {
   filename: string | null;
   jobStage: string | null;
   jobProgress: ExtractionJobPollResponse['progress'] | null;
+  pollNotice: string | null;
 }
-
-const POLL_MS = import.meta.env.MODE === 'test' ? 0 : 2000;
 
 function parseJsonErrorField(text: string): string | undefined {
   const trimmed = text.trim();
@@ -39,6 +43,35 @@ function parseJsonErrorField(text: string): string | undefined {
   } catch {
     return trimmed.slice(0, 500);
   }
+}
+
+/** Parses error JSON from failed poll / job create responses. */
+function parsePollErrorBody(text: string): { message?: string; retryable: boolean } {
+  const trimmed = text.trim();
+  if (!trimmed) return { retryable: true };
+  try {
+    const parsed = JSON.parse(trimmed) as { error?: string; retryable?: boolean };
+    return {
+      message: parsed.error ?? trimmed.slice(0, 500),
+      retryable: parsed.retryable !== false
+    };
+  } catch {
+    return { message: trimmed.slice(0, 500), retryable: true };
+  }
+}
+
+/** Backend `ocrChunk` is completed chunks; show 1-based in-flight chunk for users. */
+function displayOcrChunk(ocrChunk: number | null, ocrChunksTotal: number | null): number | null {
+  if (ocrChunksTotal == null || ocrChunksTotal <= 0) return null;
+  const completed = ocrChunk ?? 0;
+  return Math.min(completed + 1, ocrChunksTotal);
+}
+
+/** Backend `claudeBatch` counts finished batches from 0; show 1-based in-flight batch. */
+function displayClaudeBatch(claudeBatch: number | null, claudeBatchesTotal: number | null): number | null {
+  if (claudeBatchesTotal == null || claudeBatchesTotal <= 0) return null;
+  if (claudeBatch == null) return null;
+  return Math.min(claudeBatch + 1, claudeBatchesTotal);
 }
 
 function labelForJobStage(
@@ -56,18 +89,22 @@ function labelForJobStage(
       return 'Queued…';
     case 'fetching':
       return 'Reading PDF…';
-    case 'ocr':
-      if (ocrChunksTotal != null && ocrChunksTotal > 0 && ocrChunk != null) {
-        return `OCR: chunk ${ocrChunk} of ${ocrChunksTotal}…`;
+    case 'ocr': {
+      const display = displayOcrChunk(ocrChunk, ocrChunksTotal);
+      if (display != null && ocrChunksTotal != null) {
+        return `OCR: chunk ${display} of ${ocrChunksTotal}…`;
       }
       return 'Running OCR…';
+    }
     case 'annotating':
       return 'Preparing text for extraction…';
-    case 'claude':
-      if (claudeBatchesTotal != null && claudeBatchesTotal > 0 && claudeBatch != null) {
-        return `Extracting with AI: batch ${claudeBatch} of ${claudeBatchesTotal}…`;
+    case 'claude': {
+      const display = displayClaudeBatch(claudeBatch, claudeBatchesTotal);
+      if (display != null && claudeBatchesTotal != null) {
+        return `Extracting with AI: batch ${display} of ${claudeBatchesTotal}…`;
       }
       return 'Extracting with AI…';
+    }
     case 'merging':
       return 'Validating and merging…';
     default:
@@ -84,7 +121,8 @@ export function useExtraction() {
     error: null,
     filename: null,
     jobStage: null,
-    jobProgress: null
+    jobProgress: null,
+    pollNotice: null
   });
 
   async function extract(file: File) {
@@ -96,7 +134,8 @@ export function useExtraction() {
       error: null,
       filename: file.name,
       jobStage: null,
-      jobProgress: null
+      jobProgress: null,
+      pollNotice: null
     });
 
     let blobUrl: string;
@@ -116,7 +155,14 @@ export function useExtraction() {
       return;
     }
 
-    setState(s => ({ ...s, stage: 'extracting', progress: 100, jobStage: 'queued', jobProgress: null }));
+    setState(s => ({
+      ...s,
+      stage: 'extracting',
+      progress: 100,
+      jobStage: 'queued',
+      jobProgress: null,
+      pollNotice: null
+    }));
     const apiBase = import.meta.env.VITE_API_BASE_URL ?? '';
 
     try {
@@ -143,13 +189,38 @@ export function useExtraction() {
       }
       if (!jobId) throw new Error('Missing jobId from extraction job API');
 
+      let transientStreak = 0;
+      const jobUrl = `${apiBase}/api/extract/jobs/${encodeURIComponent(jobId)}`;
+
       for (;;) {
-        await new Promise(r => setTimeout(r, POLL_MS));
-        const pollRes = await fetch(`${apiBase}/api/extract/jobs/${encodeURIComponent(jobId)}`);
+        const pollRes = await fetch(jobUrl, POLL_FETCH_INIT);
         const pollRaw = await pollRes.text();
+
+        if (pollRes.status === 503) {
+          const { message, retryable } = parsePollErrorBody(pollRaw);
+          if (retryable && transientStreak < MAX_CONSECUTIVE_TRANSIENT_POLLS) {
+            transientStreak += 1;
+            setState(s => ({
+              ...s,
+              pollNotice: 'Reconnecting to server…',
+              jobStage: s.jobStage,
+              jobProgress: s.jobProgress
+            }));
+            await new Promise(r => setTimeout(r, POLL_MS));
+            continue;
+          }
+          throw new Error(message ?? 'Job status temporarily unavailable');
+        }
+
+        transientStreak = 0;
+
         if (!pollRes.ok) {
+          if (pollRes.status === 404) {
+            throw new Error(parseJsonErrorField(pollRaw) ?? 'Job not found');
+          }
           throw new Error(parseJsonErrorField(pollRaw) ?? `Job status HTTP ${pollRes.status}`);
         }
+
         let poll: ExtractionJobPollResponse;
         try {
           poll = JSON.parse(pollRaw) as ExtractionJobPollResponse;
@@ -160,7 +231,8 @@ export function useExtraction() {
         setState(s => ({
           ...s,
           jobStage: poll.stage,
-          jobProgress: poll.progress
+          jobProgress: poll.progress,
+          pollNotice: null
         }));
 
         if (poll.status === 'failed') {
@@ -179,17 +251,21 @@ export function useExtraction() {
             extractionWarnings: warnings,
             error: null,
             jobStage: 'done',
-            jobProgress: poll.progress
+            jobProgress: poll.progress,
+            pollNotice: null
           }));
           return;
         }
+
+        await new Promise(r => setTimeout(r, POLL_MS));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setState(s => ({
         ...s,
         stage: 'error',
-        error: 'Extraction failed: ' + message
+        error: 'Extraction failed: ' + message,
+        pollNotice: null
       }));
     }
   }
@@ -203,7 +279,8 @@ export function useExtraction() {
       error: null,
       filename: null,
       jobStage: null,
-      jobProgress: null
+      jobProgress: null,
+      pollNotice: null
     });
   }
 

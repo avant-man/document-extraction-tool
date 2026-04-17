@@ -55,4 +55,26 @@ describe('jobBlobStore', () => {
     expect(out).toBeNull();
     expect(mockGet).not.toHaveBeenCalled();
   });
+
+  it('getJobState retries transient blob get failures then succeeds', async () => {
+    const state = { jobId: 'job-1', status: 'running' as const, stage: 'ocr' as const };
+    const json = JSON.stringify(state);
+    const enc = new TextEncoder();
+    const okStream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(enc.encode(json));
+        controller.close();
+      }
+    });
+    mockGet
+      .mockRejectedValueOnce(new Error('Vercel Blob: Failed to fetch blob: 403 Forbidden'))
+      .mockResolvedValueOnce({
+        statusCode: 200,
+        stream: okStream
+      });
+
+    const out = await getJobState('job-1');
+    expect(out).toEqual(state);
+    expect(mockGet).toHaveBeenCalledTimes(2);
+  });
 });

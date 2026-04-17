@@ -3,6 +3,17 @@ import type { ExtractionJobState } from './types';
 
 const PREFIX = 'extraction-jobs';
 
+const BLOB_GET_MAX_ATTEMPTS = 3;
+
+function isTransientBlobReadError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /403|408|429|5\d\d|fetch|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(msg);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function publicReadOpts(token: string) {
   // Do not set useCache: false here: for public blobs the SDK still appends ?cache=0,
   // which can make the blob origin respond 400. useCache is only meaningful for private blobs.
@@ -11,15 +22,37 @@ function publicReadOpts(token: string) {
 
 /** Read by known pathname (avoids list() truncation missing state.json, etc.). */
 async function getBlobBodyUtf8(pathname: string, token: string): Promise<string | null> {
-  const res = await get(pathname, publicReadOpts(token));
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+  for (let attempt = 1; attempt <= BLOB_GET_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await get(pathname, publicReadOpts(token));
+      if (!res || res.statusCode !== 200 || !res.stream) return null;
+      return (await streamToBuffer(res.stream as ReadableStream<Uint8Array>)).toString('utf8');
+    } catch (err) {
+      if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobReadError(err)) {
+        await sleep(120 * attempt);
+        continue;
+      }
+      throw err;
+    }
+  }
+  return null;
 }
 
 async function getBlobBodyBuffer(pathname: string, token: string): Promise<Buffer | null> {
-  const res = await get(pathname, publicReadOpts(token));
-  if (!res || res.statusCode !== 200 || !res.stream) return null;
-  return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
+  for (let attempt = 1; attempt <= BLOB_GET_MAX_ATTEMPTS; attempt++) {
+    try {
+      const res = await get(pathname, publicReadOpts(token));
+      if (!res || res.statusCode !== 200 || !res.stream) return null;
+      return streamToBuffer(res.stream as ReadableStream<Uint8Array>);
+    } catch (err) {
+      if (attempt < BLOB_GET_MAX_ATTEMPTS && isTransientBlobReadError(err)) {
+        await sleep(120 * attempt);
+        continue;
+      }
+      throw err;
+    }
+  }
+  return null;
 }
 
 async function streamToBuffer(stream: ReadableStream<Uint8Array>): Promise<Buffer> {
