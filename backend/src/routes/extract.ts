@@ -1,3 +1,8 @@
+/**
+ * Synchronous extraction: runs the full pipeline in one HTTP request.
+ * Prefer `POST /api/extract/jobs` + poll for production and long PDFs (Vercel `maxDuration` caps a single invocation).
+ * This route remains for integration tests and quick local runs.
+ */
 import { randomUUID } from 'crypto';
 import { Router } from 'express';
 import { fetchPdfBuffer, deleteBlobSafe } from '../services/blobService';

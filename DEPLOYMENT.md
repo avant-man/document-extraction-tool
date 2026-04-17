@@ -62,8 +62,12 @@ Connect the GitHub repository in the Vercel dashboard under **Settings → Git**
 |---|---|---|---|
 | `ANTHROPIC_API_KEY` | Yes | Authenticates Claude API calls | [console.anthropic.com](https://console.anthropic.com) |
 | `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob read/write access | Auto-added by `vercel storage add blob` |
+| `INNGEST_EVENT_KEY` | Yes (production UI) | Queues `POST /api/extract/jobs` work to Inngest | [app.inngest.com](https://app.inngest.com) → Manage → API keys |
+| `INNGEST_SIGNING_KEY` | Yes (production UI) | Verifies Inngest calls to `POST/GET /api/inngest` on your app | Same Inngest dashboard |
 | `NODE_ENV` | No | Runtime environment (defaults to `production` on Vercel) | Set to `development` locally |
 | `VITE_API_BASE_URL` | Local dev only | Frontend API base URL | `http://localhost:3001` locally; not set on Vercel (same-origin) |
+
+After deploy, confirm async extraction is wired: **`GET https://<your-deployment>/api/health`** should return JSON with `asyncExtraction.ready: true`. If `ready` is `false`, open `asyncExtraction.missing` — add those variables in **Vercel → Settings → Environment Variables**, redeploy, and confirm the Inngest app is synced to the same deployment URL (Inngest dashboard → Apps → your app → sync / serve).
 
 ### 4a. Scan-only PDFs (OCR)
 
@@ -108,7 +112,7 @@ The project root `vercel.json` configures rewrites, the frontend build, output d
 }
 ```
 
-- **`rewrites`** — routes every request matching `/api/:path*` to the single serverless entry point at `/api/index`. This means the Express router in `backend/src/app.ts` handles all sub-routing (`/api/extract`, `/api/health`, etc.) without Vercel needing to know about individual routes.
+- **`rewrites`** — routes every request matching `/api/:path*` to the single serverless entry point at `/api/index`. The Express router in `backend/src/app.ts` handles sub-routing (`/api/extract/jobs`, `/api/health`, `/api/inngest`, etc.) without Vercel declaring each route separately.
 - **`buildCommand`** — runs only the Vite frontend build (`cd frontend && npm run build`). The backend is not built separately; it is bundled by Vercel when it processes `api/index.ts`.
 - **`outputDirectory`** — tells Vercel to serve `frontend/dist` as the static asset root. Vite writes its production output there.
 - **`includeFiles`** — copies `tesseract.js-core` `.wasm` files into the function bundle so `TESSERACT_DISABLE_CDN=1` (local WASM) can still work; when CDN mode is on (default on Vercel), WASM is loaded from jsDelivr instead.
@@ -126,9 +130,9 @@ export default app;
 
 Vercel detects any file under `api/` that exports a default value and wraps it in a serverless function. By re-exporting the Express `app` instance directly, the entire Express application — middleware, routes, and error handling — runs inside that single function.
 
-All requests to `/api/*` are handled here; Express's own router dispatches to the correct handler (`/api/extract` for PDF processing, `/api/health` for the health check).
+All requests to `/api/*` are handled here; Express dispatches to handlers such as **`/api/extract/jobs`** (async extraction the UI uses), **`POST /api/extract`** (sync path for tests / short runs only), **`/api/inngest`** (Inngest), and **`/api/health`**.
 
-**Function timeout** — The repo `vercel.json` sets `maxDuration: 300` for `api/index.ts`. If you still hit the wall with **OCR** on very long plans, reduce `OCR_MAX_PAGES` or `OCR_RENDER_SCALE`, or raise `maxDuration` further only if your Vercel plan allows it. A stuck Tesseract init (for example missing WASM before this fix) can also burn the full budget; check logs for `ENOENT` on `*.wasm` first.
+**Function timeout** — `vercel.json` sets `maxDuration: 300` for `api/index.ts`. Long PDFs should use **Inngest-backed jobs** so work is split across invocations; a single synchronous `POST /api/extract` cannot exceed this budget per request. If individual **job steps** still time out (heavy OCR), reduce `OCR_MAX_PAGES` or `OCR_RENDER_SCALE`, or raise `maxDuration` only if your plan allows it. Check logs for `ENOENT` on `*.wasm` if Tesseract fails to load.
 
 **Memory** — Raster + Tesseract increases memory use. If the function OOMs, lower `OCR_RENDER_SCALE` or `OCR_MAX_PAGES` before raising allocated memory.
 
@@ -138,13 +142,15 @@ All requests to `/api/*` are handled here; Express's own router dispatches to th
 
 PDFs are uploaded **directly from the browser to Vercel Blob** before the backend is involved. This bypasses the 4.5 MB body size limit that Vercel imposes on serverless function requests — the function itself never receives the raw PDF bytes over HTTP.
 
-The flow is:
+The flow used by the app UI is:
 
 1. Browser uploads the file to Blob and receives a `blobUrl`.
-2. Browser POSTs only the `blobUrl` (a short string) to `/api/extract`.
-3. The backend fetches the PDF Buffer from the `blobUrl`, runs pdf-parse and Claude, then calls `deleteBlobSafe()` (fire-and-forget) to remove the file from Blob immediately.
+2. Browser **`POST /api/extract/jobs`** with `{ blobUrl, filename }` → **202** and `jobId`; Inngest runs the pipeline in steps.
+3. Browser polls **`GET /api/extract/jobs/:jobId`** until `completed` or `failed`.
 
-Because blobs are deleted right after processing, Blob storage stays near-zero between requests — uploaded PDFs do not accumulate.
+The first Inngest step fetches the PDF from `blobUrl` and deletes the source blob after fetch (same cleanup idea as the legacy sync route). Job state and results are stored in Blob under job-specific paths until completion.
+
+**Legacy sync** `POST /api/extract` still fetches from `blobUrl` and deletes after fetch in one request; avoid it for large documents on Vercel (see function timeout above).
 
 ---
 
@@ -158,9 +164,13 @@ Because blobs are deleted right after processing, Blob storage stays near-zero b
 - Cause: the environment variable is missing from the Vercel project for the target environment (Production, Preview, or Development).
 - Fix: go to **Vercel dashboard → your project → Settings → Environment Variables** and confirm `BLOB_READ_WRITE_TOKEN` is present and assigned to the environment where the error occurs. Re-run `vercel env pull .env.local` locally if the issue is in local dev.
 
+**Frontend error “Async extraction is not configured” (503 on `POST /api/extract/jobs`)**
+- Cause: `BLOB_READ_WRITE_TOKEN` or `INNGEST_EVENT_KEY` missing in that environment.
+- Fix: set both on Vercel (see Section 4), redeploy, and call **`GET /api/health`** — `asyncExtraction.ready` must be `true`.
+
 **Function timeout (504 errors)**
-- Cause: a long PDF plus OCR and Claude exceeds the serverless time limit, or Tesseract failed to load WASM and the request hung until `maxDuration`.
-- Fix: confirm `maxDuration` in `vercel.json` (see Section 5). For OCR-heavy runs, lower `OCR_MAX_PAGES` / `OCR_RENDER_SCALE`. **Immediate WASM unblock:** set `TESSERACT_USE_CDN=1` in Vercel env and redeploy if logs show `ENOENT` on `tesseract-core-*.wasm`; ensure `TESSERACT_DISABLE_CDN` is not `1` unless you intend local WASM with `includeFiles` present.
+- Cause: a **single** serverless invocation exceeded `maxDuration` (for example sync `POST /api/extract` on a huge PDF), OCR + Claude in one step without job chunking, or Tesseract hung on missing WASM until timeout.
+- Fix: use **`/api/extract/jobs`** from the client (default in the bundled UI). Confirm `maxDuration` in `vercel.json` (Section 5). For OCR-heavy **steps**, lower `OCR_MAX_PAGES` / `OCR_RENDER_SCALE`. **WASM:** set `TESSERACT_USE_CDN=1` if logs show `ENOENT` on `tesseract-core-*.wasm`; avoid `TESSERACT_DISABLE_CDN=1` on Vercel unless bundled WASM is verified.
 
 **Tesseract / `ENOENT: tesseract-core-*.wasm`**
 - Cause: the serverless bundle included `tesseract.js-core` JavaScript but not the sibling `.wasm` files, and Tesseract was not using the jsDelivr `corePath`.

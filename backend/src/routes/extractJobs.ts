@@ -3,6 +3,7 @@ import { Router } from 'express';
 import { inngest } from '../inngest/client';
 import { putJobState, getJobState, getJobResultJson, deleteJobStateBlob } from '../extraction/jobBlobStore';
 import type { ExtractionJobState, JobProgress } from '../extraction/types';
+import { getAsyncExtractionEnvStatus } from '../lib/asyncExtractionReadiness';
 import { logger, runWithRequestContext } from '../lib/logger';
 import { sanitizeBlobUrlForLog } from '../lib/sanitizeUrl';
 
@@ -39,11 +40,11 @@ router.post('/extract/jobs', (req, res) => {
       return res.status(400).json({ error: 'blobUrl must be an https URL' });
     }
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    const asyncEnv = getAsyncExtractionEnvStatus();
+    if (asyncEnv.missing.includes('BLOB_READ_WRITE_TOKEN')) {
       return res.status(503).json({ error: 'BLOB_READ_WRITE_TOKEN is required for async extraction jobs' });
     }
-
-    if (!process.env.INNGEST_EVENT_KEY) {
+    if (asyncEnv.missing.includes('INNGEST_EVENT_KEY')) {
       logger.warn('extract.jobs.no_inngest', { reason: 'INNGEST_EVENT_KEY missing' });
       return res.status(503).json({
         error: 'Async extraction requires INNGEST_EVENT_KEY (Inngest cloud) or run Inngest Dev locally with keys configured.'

@@ -37,7 +37,7 @@ function chunkOcrIndices(candidates: number[], chunkSize: number): number[][] {
   return chunks;
 }
 
-/** Full pipeline in one process (POST /api/extract). */
+/** Full pipeline in one process (sync `POST /api/extract`; production UI uses Inngest job steps). */
 export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<ExtractionPipelineSyncResult> {
   const pipelineStart = Date.now();
 

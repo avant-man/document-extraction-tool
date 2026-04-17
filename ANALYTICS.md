@@ -8,7 +8,7 @@ How every dashboard value and chart is computed.
 
 ## 1. Overview
 
-All analytics are derived from the structured `ExtractedReport` JSON returned by the backend pipeline (`/api/extract`). Summary statistics are recomputed from structured array fields — `goals.length`, `benchmarks[].status`, `bmps.length` — rather than copied from the LLM's prose `summary` block. This ensures that the numbers shown in the dashboard accurately reflect the structured data Claude extracted, and makes the computation fully auditable without trusting free-text LLM output.
+All analytics are derived from the structured `ExtractedReport` JSON produced by the extraction pipeline (async job result or sync `POST /api/extract` for tests). Summary statistics are recomputed from structured array fields — `goals.length`, `benchmarks[].status`, `bmps.length` — rather than copied from the LLM's prose `summary` block. This ensures that the numbers shown in the dashboard accurately reflect the structured data Claude extracted, and makes the computation fully auditable without trusting free-text LLM output.
 
 ---
 

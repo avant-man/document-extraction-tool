@@ -123,11 +123,22 @@ Note: the backend validator (`backend/src/services/validator.ts`) already applie
 
    The Express server listens on `http://localhost:3001`.
 
-2. Upload a test PDF and extract data. You can use the frontend UI or call the API directly:
+2. Upload a test PDF and extract data. You can use the frontend UI (recommended) or the **async** API:
 
    ```bash
-   # Upload the PDF to Vercel Blob first (requires BLOB_READ_WRITE_TOKEN in your environment)
-   # Then POST the blob URL to the extract endpoint:
+   # Requires BLOB_READ_WRITE_TOKEN + INNGEST_EVENT_KEY (and Inngest dev or cloud receiving events).
+   # 1) Create a job (returns jobId):
+   curl -s -X POST http://localhost:3001/api/extract/jobs \
+     -H "Content-Type: application/json" \
+     -d '{"blobUrl": "<blob-url>", "filename": "plan.pdf"}'
+
+   # 2) Poll until status is completed (replace JOB_ID; sleep in a loop or use jq):
+   curl -s "http://localhost:3001/api/extract/jobs/JOB_ID"
+   ```
+
+   For a **single-request** smoke test (short PDFs only; can hit Vercel time limits on large files):
+
+   ```bash
    curl -X POST http://localhost:3001/api/extract \
      -H "Content-Type: application/json" \
      -d '{"blobUrl": "<blob-url>", "filename": "plan.pdf"}'

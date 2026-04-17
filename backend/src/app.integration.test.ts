@@ -64,9 +64,15 @@ describe('app (HTTP integration)', () => {
     mocks.extractWithClaude.mockResolvedValue(minimalReportJson);
   });
 
-  it('GET /api/health returns ok', async () => {
+  it('GET /api/health returns ok and asyncExtraction status', async () => {
     const res = await request(app).get('/api/health').expect(200);
-    expect(res.body).toEqual({ ok: true });
+    expect(res.body.ok).toBe(true);
+    expect(res.body.asyncExtraction).toEqual(
+      expect.objectContaining({
+        ready: expect.any(Boolean),
+        missing: expect.any(Array)
+      })
+    );
   });
 
   it('POST /api/extract returns 200 with validated report when pipeline succeeds', async () => {

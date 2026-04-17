@@ -1,4 +1,4 @@
-/** Mirrors API / backend `ExtractedReport` (POST /api/extract). */
+/** Mirrors API / backend `ExtractedReport` (job `result` or sync extract response). */
 
 export interface GeographicArea {
   name: string;
@@ -83,12 +83,12 @@ export interface ExtractionWarning {
   message: string;
 }
 
-/** POST /api/extract JSON body: report fields plus optional server warnings (OCR, low text). */
+/** Completed extraction payload: report fields plus optional server warnings (OCR, low text). */
 export type ExtractionApiResponse = ExtractedReport & {
   extractionWarnings?: ExtractionWarning[];
 };
 
-/** GET /api/extract/jobs/:jobId while running or completed. */
+/** GET /api/extract/jobs/:jobId — poll while running; `result` populated when completed. */
 export type ExtractionJobPollResponse = {
   jobId: string;
   status: 'queued' | 'running' | 'completed' | 'failed';
