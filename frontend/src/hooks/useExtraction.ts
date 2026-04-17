@@ -41,6 +41,8 @@ const FALLBACK_COMPLETED_BODY: ExtractionApiResponse = {
 };
 
 const POLL_MS = import.meta.env.MODE === 'test' ? 0 : 2000;
+/** When job `stage` is unchanged between polls, interval grows up to this cap (reduces Blob hot reads). */
+const POLL_MS_MAX = import.meta.env.MODE === 'test' ? 0 : 10_000;
 const MAX_CONSECUTIVE_TRANSIENT_POLLS = 25;
 
 const POLL_FETCH_INIT: RequestInit = { cache: 'no-store' };
@@ -235,6 +237,8 @@ export function useExtraction() {
 
       let transientStreak = 0;
       const jobUrl = `${apiBase}/api/extract/jobs/${encodeURIComponent(jobId)}`;
+      let pollDelayMs = POLL_MS;
+      let lastStageForBackoff: string | null = null;
 
       for (;;) {
         const pollRes = await fetch(jobUrl, POLL_FETCH_INIT);
@@ -251,6 +255,8 @@ export function useExtraction() {
               jobProgress: s.jobProgress
             }));
             await new Promise(r => setTimeout(r, POLL_MS));
+            pollDelayMs = POLL_MS;
+            lastStageForBackoff = null;
             continue;
           }
           throw new Error(message ?? 'Job status temporarily unavailable');
@@ -282,6 +288,15 @@ export function useExtraction() {
               ? poll.jobUpdatedAt
               : s.jobUpdatedAt
         }));
+
+        if (import.meta.env.MODE !== 'test') {
+          if (poll.stage === lastStageForBackoff) {
+            pollDelayMs = Math.min(POLL_MS_MAX, Math.round(pollDelayMs * 1.5));
+          } else {
+            pollDelayMs = POLL_MS;
+            lastStageForBackoff = poll.stage;
+          }
+        }
 
         if (poll.status === 'failed') {
           throw new Error(poll.error ?? 'Extraction job failed');
@@ -318,7 +333,7 @@ export function useExtraction() {
           return;
         }
 
-        await new Promise(r => setTimeout(r, POLL_MS));
+        await new Promise(r => setTimeout(r, pollDelayMs));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);

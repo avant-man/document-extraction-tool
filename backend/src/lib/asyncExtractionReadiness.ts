@@ -5,7 +5,24 @@ export type AsyncExtractionEnvStatus = {
   ready: boolean;
   /** Env names that are missing for async jobs (`POST /api/extract/jobs`). */
   missing: AsyncExtractionEnvVar[];
+  /**
+   * When true, `GET /api/extract/jobs/:id` prefers an Upstash Redis mirror written on each `putJobState`
+   * (`UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`, e.g. Vercel Redis integration). Pipeline steps still read Blob.
+   */
+  jobStateKvMirror: boolean;
+  /** Helps verify Inngest sync URL matches this deployment and signing is configured. */
+  deployment: {
+    inngestSigningConfigured: boolean;
+    /** `VERCEL_URL` host without scheme (e.g. `project.vercel.app`). Undefined outside Vercel. */
+    vercelHost: string | null;
+  };
 };
+
+function jobStateKvMirrorConfigured(): boolean {
+  return Boolean(
+    process.env.UPSTASH_REDIS_REST_URL?.trim() && process.env.UPSTASH_REDIS_REST_TOKEN?.trim()
+  );
+}
 
 export function getAsyncExtractionEnvStatus(): AsyncExtractionEnvStatus {
   const missing: AsyncExtractionEnvVar[] = [];
@@ -15,7 +32,16 @@ export function getAsyncExtractionEnvStatus(): AsyncExtractionEnvStatus {
   if (!process.env.INNGEST_EVENT_KEY?.trim()) {
     missing.push('INNGEST_EVENT_KEY');
   }
-  return { ready: missing.length === 0, missing };
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  return {
+    ready: missing.length === 0,
+    missing,
+    jobStateKvMirror: jobStateKvMirrorConfigured(),
+    deployment: {
+      inngestSigningConfigured: Boolean(process.env.INNGEST_SIGNING_KEY?.trim()),
+      vercelHost: vercelUrl && vercelUrl.length > 0 ? vercelUrl.replace(/^https?:\/\//i, '') : null
+    }
+  };
 }
 
 /** Vercel sets `VERCEL=1` in serverless; sync `POST /api/extract` must not run there (use jobs + Inngest). */

@@ -1,5 +1,11 @@
 import { del, get, head, list, put } from '@vercel/blob';
 import { logger } from '../lib/logger';
+import {
+  deleteJobStateKvMirror,
+  isJobStateKvMirrorConfigured,
+  mirrorJobStateToKv,
+  readJobStateFromKv
+} from './jobStateKvMirror';
 import type { ExtractionJobState } from './types';
 
 const PREFIX = 'extraction-jobs';
@@ -228,7 +234,11 @@ export function jobResultPathname(jobId: string): string {
 export async function putJobState(jobId: string, state: ExtractionJobState): Promise<void> {
   const token = requireToken();
   const pathname = jobStatePathname(jobId);
-  await putBlobResilient(pathname, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }), token, 'application/json');
+  const merged: ExtractionJobState = { ...state, updatedAt: new Date().toISOString() };
+  await putBlobResilient(pathname, JSON.stringify(merged), token, 'application/json');
+  if (isJobStateKvMirrorConfigured()) {
+    await mirrorJobStateToKv(jobId, merged);
+  }
 }
 
 export async function getJobState(jobId: string): Promise<ExtractionJobState | null> {
@@ -237,6 +247,25 @@ export async function getJobState(jobId: string): Promise<ExtractionJobState | n
   const text = await getBlobBodyUtf8(jobStatePathname(jobId), token);
   if (text == null) return null;
   return JSON.parse(text) as ExtractionJobState;
+}
+
+/**
+ * Poll path: prefers Upstash Redis mirror when configured (see `putJobState`), else Blob.
+ * Inngest pipeline steps should keep using `getJobState` (Blob) for consistency with large artifacts.
+ */
+export async function getJobStateForPoll(jobId: string): Promise<ExtractionJobState | null> {
+  if (isJobStateKvMirrorConfigured()) {
+    try {
+      const fromKv = await readJobStateFromKv(jobId);
+      if (fromKv) return fromKv;
+    } catch (err) {
+      logger.warn('job_state.kv_poll_read_failed', {
+        jobId,
+        message: err instanceof Error ? err.message : String(err)
+      });
+    }
+  }
+  return getJobState(jobId);
 }
 
 export async function putJobPages(jobId: string, pages: string[]): Promise<void> {
@@ -318,13 +347,15 @@ export async function putJobResult(jobId: string, body: unknown): Promise<string
 
 export async function deleteJobStateBlob(jobId: string): Promise<void> {
   const token = blobRwToken();
-  if (!token) return;
-  try {
-    const meta = await head(jobStatePathname(jobId), { token });
-    if (meta?.url) await del(meta.url, { token });
-  } catch {
-    /* ignore */
+  if (token) {
+    try {
+      const meta = await head(jobStatePathname(jobId), { token });
+      if (meta?.url) await del(meta.url, { token });
+    } catch {
+      /* ignore */
+    }
   }
+  await deleteJobStateKvMirror(jobId);
 }
 
 /** Removes PDF, pages, annotated text, regex map, and Claude partials. Keeps state.json and result.json for GET /jobs until TTL or explicit cleanup. */

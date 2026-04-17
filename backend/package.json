@@ -16,6 +16,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "@napi-rs/canvas": "^0.1.56",
     "@vercel/blob": "^2.3.3",
+    "@upstash/redis": "^1.35.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",

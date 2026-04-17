@@ -221,8 +221,17 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
   return { report: result, extractionWarnings };
 }
 
-async function patchJobState(jobId: string, patch: Partial<ExtractionJobState>): Promise<void> {
-  const prev = await jobBlob.getJobState(jobId);
+type PatchJobStateOptions = {
+  /** When set, skip a Blob read and merge against this document (fewer hot-path reads per step). */
+  base?: ExtractionJobState;
+};
+
+async function patchJobState(
+  jobId: string,
+  patch: Partial<ExtractionJobState>,
+  options?: PatchJobStateOptions
+): Promise<ExtractionJobState> {
+  const prev = options?.base ?? (await jobBlob.getJobState(jobId));
   if (!prev) throw new Error(`job state missing: ${jobId}`);
   const merged: ExtractionJobState = { ...prev, ...patch, updatedAt: new Date().toISOString() };
   // Stale Blob reads can return an older `stage` (e.g. still `ocr`) after annotate-plan wrote
@@ -240,13 +249,14 @@ async function patchJobState(jobId: string, patch: Partial<ExtractionJobState>):
     }
   }
   await jobBlob.putJobState(jobId, merged);
+  return merged;
 }
 
 export async function extractionJobFetchNative(jobId: string): Promise<FetchNativeStepResult> {
-  const state = await jobBlob.getJobState(jobId);
+  let state = await jobBlob.getJobState(jobId);
   if (!state) throw new Error(`job not found: ${jobId}`);
 
-  await patchJobState(jobId, { status: 'running', stage: 'fetching' });
+  state = await patchJobState(jobId, { status: 'running', stage: 'fetching' }, { base: state });
 
   const buffer = await fetchPdfBuffer(state.sourceBlobUrl);
   await jobBlob.putJobPdf(jobId, buffer);
@@ -270,24 +280,28 @@ export async function extractionJobFetchNative(jobId: string): Promise<FetchNati
 
   await jobBlob.putJobPages(jobId, nativePages);
 
-  await patchJobState(jobId, {
-    stage: ocrChunkPlans.length > 0 ? 'ocr' : 'annotating',
-    nativeTotalTrimmedChars,
-    sparsePageIndices,
-    autoGlobalSparseApplied,
-    ocrEngine,
-    ocrChunkPlans,
-    ocrAppliedToPages: [],
-    pageCount: numPages,
-    pdfPathname: jobBlob.jobPdfPathname(jobId)
-  });
+  state = await patchJobState(
+    jobId,
+    {
+      stage: ocrChunkPlans.length > 0 ? 'ocr' : 'annotating',
+      nativeTotalTrimmedChars,
+      sparsePageIndices,
+      autoGlobalSparseApplied,
+      ocrEngine,
+      ocrChunkPlans,
+      ocrAppliedToPages: [],
+      pageCount: numPages,
+      pdfPathname: jobBlob.jobPdfPathname(jobId)
+    },
+    { base: state }
+  );
 
   logger.info('extract.job.fetch_native', { jobId, ocrChunksTotal: ocrChunkPlans.length, numPages });
   return { ocrChunksTotal: ocrChunkPlans.length };
 }
 
 export async function extractionJobOcrChunk(jobId: string, chunkIndex: number): Promise<void> {
-  const state = await jobBlob.getJobState(jobId);
+  let state = await jobBlob.getJobState(jobId);
   if (!state?.ocrChunkPlans?.length) return;
 
   const plans = state.ocrChunkPlans;
@@ -295,7 +309,7 @@ export async function extractionJobOcrChunk(jobId: string, chunkIndex: number): 
     throw new Error(`ocr chunk out of range: ${chunkIndex}`);
   }
 
-  await patchJobState(jobId, { stage: 'ocr', status: 'running' });
+  state = await patchJobState(jobId, { stage: 'ocr', status: 'running' }, { base: state });
 
   const pdfBuffer = await jobBlob.getJobPdfBuffer(jobId);
   const pages = await jobBlob.getJobPages(jobId);
@@ -315,10 +329,14 @@ export async function extractionJobOcrChunk(jobId: string, chunkIndex: number): 
   const mergedApplied = [...new Set([...prevApplied, ...chunkApplied])].sort((a, b) => a - b);
 
   await jobBlob.putJobPages(jobId, merged);
-  await patchJobState(jobId, {
-    ocrAppliedToPages: mergedApplied,
-    ocrChunkCurrent: chunkIndex + 1
-  });
+  await patchJobState(
+    jobId,
+    {
+      ocrAppliedToPages: mergedApplied,
+      ocrChunkCurrent: chunkIndex + 1
+    },
+    { base: state }
+  );
 
   logger.info('extract.job.ocr_chunk', { jobId, chunkIndex, chunkSize: chunkIndices.length });
 }
@@ -337,12 +355,13 @@ export type ClaudeBatchPlanSlice = {
 };
 
 export async function extractionJobAnnotateAndPlan(jobId: string): Promise<AnnotatePlanResult> {
-  await patchJobState(jobId, { stage: 'annotating' });
+  let state = await jobBlob.getJobState(jobId);
+  if (!state) throw new Error(`job not found: ${jobId}`);
+  state = await patchJobState(jobId, { stage: 'annotating' }, { base: state });
 
   const pages = await jobBlob.getJobPages(jobId);
   if (!pages) throw new Error('job pages missing');
 
-  const state = await jobBlob.getJobState(jobId);
   const rawText = joinPageTexts(pages);
   const { text: annotatedText, regexNumerics } = annotateText(rawText);
   const entries = [...regexNumerics.entries()] as [string, number][];
@@ -365,44 +384,56 @@ export async function extractionJobAnnotateAndPlan(jobId: string): Promise<Annot
   const useBatchedExtraction = overFullDoc || batchedDueToPageCap;
 
   if (!useBatchedExtraction) {
-    await patchJobState(jobId, {
-      useBatchedExtraction: false,
-      batchCount: 1,
-      batches: [],
-      estimatedInputTokens,
-      budgetTokens,
-      stage: 'claude',
-      claudeBatchCurrent: 0
-    });
+    await patchJobState(
+      jobId,
+      {
+        useBatchedExtraction: false,
+        batchCount: 1,
+        batches: [],
+        estimatedInputTokens,
+        budgetTokens,
+        stage: 'claude',
+        claudeBatchCurrent: 0
+      },
+      { base: state }
+    );
     return { useBatchedExtraction: false, batchCount: 1 };
   }
 
   const batches = buildPageBatchesForClaude(WATERSHED_EXTRACTION_SYSTEM_PROMPT, pageSlices, budgetTokens);
   if (!batches) {
-    await patchJobState(jobId, {
-      status: 'failed',
-      stage: 'failed',
-      error: 'document_text_exceeds_model_context'
-    });
+    await patchJobState(
+      jobId,
+      {
+        status: 'failed',
+        stage: 'failed',
+        error: 'document_text_exceeds_model_context'
+      },
+      { base: state }
+    );
     throw new Error('document_text_exceeds_model_context');
   }
 
-  await patchJobState(jobId, {
-    useBatchedExtraction: true,
-    batchCount: batches.length,
-    batches,
-    estimatedInputTokens,
-    budgetTokens,
-    stage: 'claude',
-    claudeBatchCurrent: 0
-  });
+  await patchJobState(
+    jobId,
+    {
+      useBatchedExtraction: true,
+      batchCount: batches.length,
+      batches,
+      estimatedInputTokens,
+      budgetTokens,
+      stage: 'claude',
+      claudeBatchCurrent: 0
+    },
+    { base: state }
+  );
 
   return { useBatchedExtraction: true, batchCount: batches.length, batches };
 }
 
 export async function extractionJobClaudeSingle(jobId: string): Promise<void> {
   const annotatedText = await jobBlob.getAnnotatedText(jobId);
-  const state = await jobBlob.getJobState(jobId);
+  let state = await jobBlob.getJobState(jobId);
   if (annotatedText == null || annotatedText === '') {
     throw new Error('annotated text missing for Claude single extraction');
   }
@@ -427,7 +458,7 @@ export async function extractionJobClaudeSingle(jobId: string): Promise<void> {
   });
 
   await jobBlob.putPartialBatch(jobId, 0, rawJson);
-  await patchJobState(jobId, { claudeBatchCurrent: 1 });
+  await patchJobState(jobId, { claudeBatchCurrent: 1 }, { base: state });
 }
 
 export async function extractionJobClaudeBatchPart(
@@ -436,7 +467,7 @@ export async function extractionJobClaudeBatchPart(
   planSlice?: ClaudeBatchPlanSlice
 ): Promise<void> {
   const annotatedText = await jobBlob.getAnnotatedText(jobId);
-  const state = await jobBlob.getJobState(jobId);
+  let state = await jobBlob.getJobState(jobId);
 
   if (annotatedText == null || annotatedText === '') {
     throw new Error('annotated text missing for Claude batch');
@@ -492,19 +523,20 @@ export async function extractionJobClaudeBatchPart(
   );
 
   await jobBlob.putPartialBatch(jobId, batchIndex, rawJson);
-  await patchJobState(jobId, { claudeBatchCurrent: batchIndex + 1 });
+  await patchJobState(jobId, { claudeBatchCurrent: batchIndex + 1 }, { base: state });
 }
 
 export async function extractionJobMergeAndValidate(jobId: string): Promise<void> {
-  await patchJobState(jobId, { stage: 'merging' });
+  let state = await jobBlob.getJobState(jobId);
+  if (!state) throw new Error('merge: missing state');
+  state = await patchJobState(jobId, { stage: 'merging' }, { base: state });
 
-  const state = await jobBlob.getJobState(jobId);
   const regexNumerics = await jobBlob.getRegexNumericsMap(jobId);
   const pages = await jobBlob.getJobPages(jobId);
   const rawText = pages ? joinPageTexts(pages) : '';
 
-  if (!state || !regexNumerics || !pages) {
-    throw new Error('merge: missing state, regex, or pages');
+  if (!regexNumerics || !pages) {
+    throw new Error('merge: missing regex, or pages');
   }
 
   let rawJson: string;
@@ -534,11 +566,15 @@ export async function extractionJobMergeAndValidate(jobId: string): Promise<void
   });
 
   const resultUrl = await jobBlob.putJobResult(jobId, { ...result, extractionWarnings });
-  await patchJobState(jobId, {
-    status: 'completed',
-    stage: 'done',
-    resultUrl
-  });
+  await patchJobState(
+    jobId,
+    {
+      status: 'completed',
+      stage: 'done',
+      resultUrl
+    },
+    { base: state }
+  );
 
   await jobBlob.deleteJobIntermediates(jobId);
   logger.info('extract.job.complete', { jobId });

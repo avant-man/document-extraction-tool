@@ -1,7 +1,12 @@
 import { randomUUID } from 'crypto';
 import { Router } from 'express';
 import { inngest } from '../inngest/client';
-import { putJobState, getJobState, getJobResultJson, deleteJobStateBlob } from '../extraction/jobBlobStore';
+import {
+  putJobState,
+  getJobStateForPoll,
+  getJobResultJson,
+  deleteJobStateBlob
+} from '../extraction/jobBlobStore';
 import type { ExtractionJobState, JobProgress } from '../extraction/types';
 import { getAsyncExtractionEnvStatus } from '../lib/asyncExtractionReadiness';
 import { logger, runWithRequestContext } from '../lib/logger';
@@ -118,7 +123,7 @@ router.get('/extract/jobs/:jobId', (req, res, next) => {
     try {
       let state: ExtractionJobState | null;
       try {
-        state = await getJobState(jobId);
+        state = await getJobStateForPoll(jobId);
       } catch (err) {
         if (err instanceof SyntaxError) {
           logger.error('extract.jobs.job_state_corrupt', err, { jobId });
