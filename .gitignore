@@ -4,8 +4,10 @@ dist/
 .env
 *.local
 
-# Claude
+# Claude (local agent context; not versioned here)
 CLAUDE.md
-docs/
+
+# Optional large design assets / sample PDFs under specs
+docs/superpowers/
 
 .vercel
