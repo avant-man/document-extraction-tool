@@ -32,7 +32,15 @@ app.get('/api/health', (_req, res) => {
     }
   });
 });
-app.use('/api/inngest', serve({ client: inngest, functions: [extractionPipelineJob] }));
+app.use(
+  '/api/inngest',
+  serve({
+    client: inngest,
+    functions: [extractionPipelineJob],
+    // Lets the SDK stream step results on supported runtimes (helps avoid tight gateway timeouts on Vercel).
+    streaming: 'allow'
+  })
+);
 app.use('/api', extractRouter);
 app.use('/api', extractJobsRouter);
 app.use('/api', blobUploadRouter);
