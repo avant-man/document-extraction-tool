@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { upload } from '@vercel/blob/client';
 import type {
   ExtractedReport,
-  ExtractionApiResponse,
   ExtractionJobPollResponse,
   ExtractionWarning
 } from '../types/extraction';
