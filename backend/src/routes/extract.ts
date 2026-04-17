@@ -26,12 +26,14 @@ router.post('/extract', (req, res) => {
     logger.info('extract.request', { stage: 'accepted', blobRef });
 
     let buffer: Buffer;
+    let blobFetchMs = 0;
     try {
       const tBlob = Date.now();
       buffer = await fetchPdfBuffer(blobUrl);
+      blobFetchMs = Date.now() - tBlob;
       logger.info('extract.stage', {
         stage: 'blob_fetch',
-        durationMs: Date.now() - tBlob,
+        durationMs: blobFetchMs,
         byteLength: buffer.length,
         blobRef
       });
@@ -43,9 +45,13 @@ router.post('/extract', (req, res) => {
     void deleteBlobSafe(blobUrl);
 
     try {
+      const pipelineStarted = Date.now();
       const { report, extractionWarnings } = await runSyncExtractionFromBuffer(buffer);
+      const pipelineDurationMs = Date.now() - pipelineStarted;
       logger.info('extract.complete', {
         durationMs: Date.now() - requestStart,
+        pipelineDurationMs,
+        blobFetchMs,
         status: 200
       });
       return res.json({ ...report, extractionWarnings });

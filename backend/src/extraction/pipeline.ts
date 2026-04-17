@@ -39,7 +39,12 @@ function chunkOcrIndices(candidates: number[], chunkSize: number): number[][] {
 
 /** Full pipeline in one process (POST /api/extract). */
 export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<ExtractionPipelineSyncResult> {
+  const pipelineStart = Date.now();
+
+  const tPdf = Date.now();
   const { pages: nativePages, numPages } = await extractPagesFromBuffer(buffer);
+  const pdfParseMs = Date.now() - tPdf;
+
   const nativeTotalTrimmedChars = sumNativeTrimmedLengths(nativePages);
   const sparseHeuristic = detectSparsePageIndices(nativePages);
   const ocrEngine = getOcrEngineKind();
@@ -48,15 +53,22 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
     ocrEngine,
     sparseHeuristic
   );
+
+  const tOcr = Date.now();
   const { pages: mergedPages, ocrAppliedToPages } = await applyOcrToSparsePages({
     pdfBuffer: buffer,
     pages: nativePages,
     sparsePageIndices1Based: sparsePageIndices,
     engine: ocrEngine
   });
+  const ocrMs = Date.now() - tOcr;
+
   const rawText = joinPageTexts(mergedPages);
   logger.info('extract.stage', {
     stage: 'pdf',
+    durationMs: pdfParseMs + ocrMs,
+    pdfParseMs,
+    ocrMs,
     numPages,
     pageCount: mergedPages.length,
     nativeTotalTrimmedChars,
@@ -69,10 +81,13 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
     ocrEngine
   });
 
+  const tRegex = Date.now();
   const { text: annotatedText, regexNumerics } = annotateText(rawText);
+  const regexMs = Date.now() - tRegex;
   const numMarkers = (annotatedText.match(/\[NUM:/g) ?? []).length;
   logger.info('extract.stage', {
     stage: 'regex',
+    durationMs: regexMs,
     regexNumericsSize: regexNumerics.size,
     regexMarkerCount: numMarkers,
     annotatedChars: annotatedText.length
@@ -95,13 +110,24 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
   const useBatchedExtraction = overFullDoc || batchedDueToPageCap;
 
   let rawJson: string;
+  let claudeMs = 0;
+  let mergeMs = 0;
+
   if (!useBatchedExtraction) {
+    const tClaude = Date.now();
     rawJson = await extractWithClaude(annotatedText, {
       estimatedInputTokens,
       pageCount: mergedPages.length,
       ocrEngine,
       ocrAppliedToPages,
       sparsePageIndices
+    });
+    claudeMs = Date.now() - tClaude;
+    logger.info('extract.stage', {
+      stage: 'claude',
+      durationMs: claudeMs,
+      batched: false,
+      batchCount: 1
     });
   } else {
     const batches = buildPageBatchesForClaude(WATERSHED_EXTRACTION_SYSTEM_PROMPT, pageSlices, budgetTokens);
@@ -123,6 +149,7 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
       const startP = Math.min(...pageNums);
       const endP = Math.max(...pageNums);
       const estBatch = estimateClaudeExtractionInputTokens(WATERSHED_EXTRACTION_SYSTEM_PROMPT, body);
+      const tBatch = Date.now();
       const jsonStr = await extractWithClaude(
         body,
         {
@@ -143,12 +170,32 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
           isFirstBatch: i === 0
         }
       );
+      const batchMs = Date.now() - tBatch;
+      claudeMs += batchMs;
+      logger.info('extract.stage', {
+        stage: 'claude_batch',
+        durationMs: batchMs,
+        batchIndex: i,
+        totalBatches: batches.length,
+        startPage: startP,
+        endPage: endP
+      });
       partials.push(JSON.parse(jsonStr) as ExtractedReport);
     }
+    const tMerge = Date.now();
     rawJson = JSON.stringify(mergePartialExtractions(partials));
+    mergeMs = Date.now() - tMerge;
+    logger.info('extract.stage', {
+      stage: 'merge_partials',
+      durationMs: mergeMs,
+      batchCount: partials.length
+    });
   }
 
+  const tValidate = Date.now();
   const result = validate(rawJson, regexNumerics, rawText);
+  const validateMs = Date.now() - tValidate;
+
   const extractionWarnings = buildExtractionWarnings({
     nativeTotalTrimmedChars,
     annotatedChars: annotatedText.length,
@@ -156,6 +203,21 @@ export async function runSyncExtractionFromBuffer(buffer: Buffer): Promise<Extra
     ocrAppliedToPages,
     autoGlobalSparseApplied
   });
+
+  const pipelineMs = Date.now() - pipelineStart;
+  const accountedMs = pdfParseMs + ocrMs + regexMs + claudeMs + mergeMs + validateMs;
+  logger.info('extract.timing', {
+    pipelineMs,
+    pdfParseMs,
+    ocrMs,
+    regexMs,
+    claudeMs,
+    mergeMs,
+    validateMs,
+    unloggedOverheadMs: Math.max(0, pipelineMs - accountedMs),
+    batchedClaude: useBatchedExtraction
+  });
+
   return { report: result, extractionWarnings };
 }
 
