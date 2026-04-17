@@ -1,5 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getAsyncExtractionEnvStatus } from './asyncExtractionReadiness';
+import {
+  getAsyncExtractionEnvStatus,
+  isSyncPostExtractBlockedOnVercel
+} from './asyncExtractionReadiness';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -29,5 +32,20 @@ describe('getAsyncExtractionEnvStatus', () => {
       expect.arrayContaining(['BLOB_READ_WRITE_TOKEN', 'INNGEST_EVENT_KEY'])
     );
     expect(s.missing.length).toBe(2);
+  });
+});
+
+describe('isSyncPostExtractBlockedOnVercel', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is false when VERCEL is unset', () => {
+    expect(isSyncPostExtractBlockedOnVercel()).toBe(false);
+  });
+
+  it('is true when VERCEL is 1', () => {
+    vi.stubEnv('VERCEL', '1');
+    expect(isSyncPostExtractBlockedOnVercel()).toBe(true);
   });
 });

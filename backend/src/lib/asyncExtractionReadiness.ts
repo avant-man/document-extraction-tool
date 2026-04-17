@@ -17,3 +17,8 @@ export function getAsyncExtractionEnvStatus(): AsyncExtractionEnvStatus {
   }
   return { ready: missing.length === 0, missing };
 }
+
+/** Vercel sets `VERCEL=1` in serverless; sync `POST /api/extract` must not run there (use jobs + Inngest). */
+export function isSyncPostExtractBlockedOnVercel(): boolean {
+  return process.env.VERCEL === '1';
+}

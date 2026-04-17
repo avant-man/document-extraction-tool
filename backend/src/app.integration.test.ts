@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 
 const mocks = vi.hoisted(() => ({
@@ -73,6 +73,7 @@ describe('app (HTTP integration)', () => {
         missing: expect.any(Array)
       })
     );
+    expect(res.body.syncPostExtract).toEqual({ allowed: true });
   });
 
   it('POST /api/extract returns 200 with validated report when pipeline succeeds', async () => {
@@ -152,5 +153,46 @@ describe('app (HTTP integration)', () => {
 
     if (prevCap === undefined) delete process.env.EXTRACTION_MAX_PAGES_PER_BATCH;
     else process.env.EXTRACTION_MAX_PAGES_PER_BATCH = prevCap;
+  });
+});
+
+describe('Vercel (VERCEL=1): sync extract disabled', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('GET /api/health reports syncPostExtract not allowed and points to jobs API', async () => {
+    vi.stubEnv('VERCEL', '1');
+    const res = await request(app).get('/api/health').expect(200);
+    expect(res.body.syncPostExtract).toEqual({
+      allowed: false,
+      reason: 'vercel',
+      useInstead: {
+        createJob: 'POST /api/extract/jobs',
+        pollJob: 'GET /api/extract/jobs/:jobId'
+      }
+    });
+    expect(res.body.asyncExtraction).toEqual(
+      expect.objectContaining({
+        ready: expect.any(Boolean),
+        missing: expect.any(Array)
+      })
+    );
+  });
+
+  it('POST /api/extract returns 410 before blob fetch or pipeline', async () => {
+    vi.stubEnv('VERCEL', '1');
+    mocks.fetchPdfBuffer.mockClear();
+    const res = await request(app)
+      .post('/api/extract')
+      .send({ blobUrl: 'https://example.com/x.pdf' })
+      .expect(410);
+
+    expect(res.body.code).toBe('sync_extract_disabled_on_vercel');
+    expect(res.body.useAsyncPath).toEqual({
+      createJob: 'POST /api/extract/jobs',
+      pollJob: 'GET /api/extract/jobs/:jobId'
+    });
+    expect(mocks.fetchPdfBuffer).not.toHaveBeenCalled();
   });
 });

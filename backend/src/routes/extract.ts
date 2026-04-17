@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { Router } from 'express';
 import { fetchPdfBuffer, deleteBlobSafe } from '../services/blobService';
 import { runSyncExtractionFromBuffer } from '../extraction/pipeline';
+import { isSyncPostExtractBlockedOnVercel } from '../lib/asyncExtractionReadiness';
 import { logger, runWithRequestContext } from '../lib/logger';
 import { sanitizeBlobUrlForLog } from '../lib/sanitizeUrl';
 
@@ -16,6 +17,23 @@ router.post('/extract', (req, res) => {
   const correlationId = randomUUID();
   return runWithRequestContext(correlationId, async () => {
     const requestStart = Date.now();
+
+    if (isSyncPostExtractBlockedOnVercel()) {
+      logger.warn('extract.sync_disabled_vercel', {
+        stage: 'blocked',
+        detail: 'POST /api/extract is disabled on Vercel; use POST /api/extract/jobs and poll GET /api/extract/jobs/:jobId'
+      });
+      return res.status(410).json({
+        error:
+          'Synchronous POST /api/extract is disabled on Vercel. Use POST /api/extract/jobs with { blobUrl, filename }, then poll GET /api/extract/jobs/:jobId until status is completed.',
+        code: 'sync_extract_disabled_on_vercel',
+        useAsyncPath: {
+          createJob: 'POST /api/extract/jobs',
+          pollJob: 'GET /api/extract/jobs/:jobId'
+        }
+      });
+    }
+
     const { blobUrl } = req.body;
 
     if (!blobUrl || typeof blobUrl !== 'string') {
@@ -28,7 +46,12 @@ router.post('/extract', (req, res) => {
     }
 
     const blobRef = sanitizeBlobUrlForLog(blobUrl);
-    logger.info('extract.request', { stage: 'accepted', blobRef });
+    logger.info('extract.request', {
+      stage: 'accepted',
+      blobRef,
+      route: 'sync_post_extract',
+      hint: 'prefer POST /api/extract/jobs for production and long PDFs'
+    });
 
     let buffer: Buffer;
     let blobFetchMs = 0;
